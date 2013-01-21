@@ -1,0 +1,124 @@
+OpenCuffs Readme - Version 3.335+ 2009/10/06
+
+ATTENTION: This cuffset is made to be used with OpenCollar Version 3.331 or above. The Addon does not support collars of a lower version anymore,  if it is used with COllars of Version 3.301 or below multiple users wil not be properly supported.
+
+This release of the cuffs is a beta. The cuffs can keep the same colors and textures as the collar (if same labels for prims are used) and share owners. Furthermore they can be locked and unlocked from the collar. 
+
+Additionally the arm and leg cuffs can be locked in sseveral positions,. When using those animations Lockmeister compatible AOs will be disabled for the time being, the OpenCollar SubAO will be switched off and back on as needed. Other AOs might override the arm position; in this case we recommend switching off the AO or using the OpenCollar Sub AO.
+
+Please report any bugs and problems with this release to  the OpenCollar bug tracker at http://code.google.com/p/opencollar/issues.
+
+INSTALLATION:
+The cuffs can be worn simply and be clicked to show a menu. If you want to keep the colors and textures as well as owners in sync with the collar, you have to place the script found in this folder into your OpenCollar collar. The plug-in will as well allow you to open the Cuff menu from the OpenCollar menu.
+
+To install this into your collar:
+1) make sure you have a copy of your current collar. The collar needs to be minimum Version 3.301. With lower version it will NOT work.
+2) wear your collar (unlocked when using rlv, else you cannot edit it)
+3) go into edit, click more , open the content tab
+4) be patient !!!!
+5) If you have an older version of the Cuff plugin installed: wait until you see the content, look for OpenCollar - cuffs - 3.xxx, delete it.
+6) be patient, wait until the content refreshed this may take a while
+7) drag the script OpenCollar - OpenCollar - cuffs - 3.xxx  into the content tab
+
+Chat commands when wearing the collar with installed cuff plugin:
+cuffs - Opens the cuffs plugin menu of the collar. Usage: prefix+cuffs, f.i: cccuffs
+cuffmenu - Opens the cuffs menu (only works when wearing the collar with the cuffs plugin!)  Usage: prefix+cuffmenu, f.i: cccuffmenu
+
+Options of the OpenCollar Cuff plug in (which you can find in the Addon menu):
+
+(Un)Lock Cuffs – Allows operating the lock of the cuffs from the Collar menu.
+Cuff Menu – Opens the menu of the Cuffs.
+Sync On/Sync Off – If the sync is on, any change on colors/textures of the collar will be submitted to the cuffs as well. **
+Upd. Colors – Sends the current colors used by the collar to the cuffs. **
+Upd. Textures - Sends the current textures used by the collar to the cuffs. **
+
+Attention: The cuffs and collar will keep the same owner settings. Every change in the owner setting should be send immediately from the collar to the cuffs and vice versa. The only change which gets not detected is a runaway. In that case please just reattach the collar/cuffs. If problems with the syncing of owners appear, reattach the cuffs/collar as well.
+
+** The collar and the cuff need to use the same name base for the prims for these functions to work.
+Based on OpenCollar scripts.
+
+Menus in the cuffs:
+
+- Main Menu
+*Lock*/*Unlock* - Lock or unlock the cuffs. If RLV is used, dettaching will be disable otherwise the woner gets informed, if you detach locked cuffs.
+Appearance - offers the possibility to change colors and textures for the cuffs
+Collar Menu - Opens the menu of the collar.
+Poses - Offers the restraining animations of the cuffs.
+Help/Debug - Severel options to fix problems as well as an option to get this notecard
+Owners - Options to set owners for the cuffs AND the collar
+RLV - Enable or disable the use of RLV, more options to come.
+
+- Appearance
+Color - Bring up a menu letting you set the color for different parts of the collar.
+Texture - Bring up the menu for setting textures on the collar.
+Chains - Choose between several presets for the chains/ropes between the cuffs.
+Hide - Hides/shows the complete cuff set. (Please not that designers can disable this option in the defaultsettings notecard, if this option is not wanted for a cuff set.)
+
+- Poses
+Arm Cuffs - Opens a menu to set the animation and restraints for the arms. The sub menu has a stop button, which only influences arm animations
+Leg Cuffs - Opens a menu to set the animation and restraints for the legs. The sub menu has a stop button, which only influences leg animations
+Stop All - Stops all animations and restraints currently in use.
+Stay Mode - Forces the sub to stay in place, if the legs get chained and this mode is enabled.
+RLV Restrictions - Sets some RLV restrictions in place when the sub gets bound. If it is a arm pose, the sub cannot edit, touch things farer than 1.5 meters, use the inventory or rez things. If it is a leg pose, the sub cannot sit, tp to landmarks or a location and as well not get tped by friends.
+
+Attention: LockMeister comatible AOs will be sent to sleep mode, when using cuff animations, the SUB AO will be disabled. After all animations of the cuffs are stoppded, the LockMeister AO will end the sleep mode, the SUB AO will be enabled.
+
+- Help/Debug
+Online Mode - Allows you to enable a mode, in which the settings are stored only local in the cuffs. Please note that in this mode the cuffs wil not keep owners in sync with the collar.
+Dump Cache - Dumps the settings from the httpdb database into open chat for debugging purposes.
+Fix Menus - Sll menus of tthe collars get rebuild. Use this to as first try to fix problems with the menus
+Guide - Hands out this notecard.
+Sync<-DB - Relaod the settings from the httpdb database.
+
+- Owners
+Add owner - Set the sub's owner.  When first starting up, the sub *is* the owner, until another owner is set.  The name is not case sensitive, the new owner needs to be nearby. Maximum 10 primary woners are supported. Please note that only collar version 3.4 or higher support multiple primary owners. Older collars wil only recognize the first owner and overwrite addition onwers if you change a primary owner with them.
+Add Recowner - Add a secondary owner. The new owner needs to be nearby.
+Add Blacklist - Add people you would like to bann from using your cuffs.
+Set Group - Record the currently set group, allowing members of that group to have secowner-strength control over the sub.  (The currently-set group is the one you had on when you attached the collar.  You may need to re-attach the collar to change the group before recording it with this command.)
+Unset Group - Clear the group setting.
+SetOpenAccess - Allow anyone to access the cuffs. Anyone has the same right as the would be a Group Owner of your cuffs.
+UnSetOpenAccess - Remove open access.
+Reset All - Clear all cuff AND collar settings.
+Rem Owner - Remove a pimary owner from your cuffs. Please note that only collar version 3.4 or higher support multiple primary owners. 
+Rem Secowner - Remove a secondary woenr from your cuffs.
+Rem Blacklist - Remove people currently banned from using your cuffs.
+List Owners - List all owner settings of the cuffs
+
+Attention: The cuffs and collar will keep the same owner settings. Every change in the owner setting should be send immediately from the collar to the cuffs and vice versa. If problems with the syncing of owners appear, reattach the cuffs/collar. Syncing wil not happen if the cuffs or the  collar is in offline mode.
+
+---------------------------------------------------------------------------------------------------------------
+
+Thanks go out to Anne Karas (inital communications and poses system), Pol McLaglen (starting the project and initial cuff design), Jesrad Seraph (additional poses), Winter Seale (some script improvements and bug fixings), Sandra Merilouto (testing) and Garvin Twine (testing and advise). Don’t forget Athaliah Opus and Nandana Singh, who started that OC madness and the mayn scripter involved in the OC project, on which this cuffs scripts are based on. You rock! 
+
+Thanks as well for all who contributed and are not mentioned here. We hope, you like the cuffs and enjoy playing with them.
+
+The cuffs use the LockMeister protocol by Kyrah Abattoir, which is under GPL3. Find more infos here: http://wiki.secondlife.com/wiki/LSL_Protocol/LockMeister_System.
+The cuffs use the  LockGuard V2 System Protocol by Lillani Lowell.
+
+---------------------------------------------------------------------------------------------------------------
+
+OpenCollar/OpenCuffs is a set of scripts for a collar similar other collars common in SL.  Unlike those systems however, OpenCollar is open source.  You are free to copy and redistribute the OpenCollar scripts, provided that you leave them full perms.  Read the entire OpenCollar License in the notecard accompanying the scripts.
+
+The OpenCollar architecture is plug in-based, allowing for many more features to be added in the future.  Features not found in other collars include:
+
+- complete, menu-driven support for the Restrained Life Viewer.
+- optional Group control (in addition to owners and secowners)
+- menu-driven color and texture setting
+- automatic updates
+- settings are stored to an online database so that they survive script resets and are automatically transferred when you wear a new version of the cuffs.
+- and best of all, free and open source!
+
+THIS IS A BETA RELEASE
+
+Please report any bugs you find or feature requests to the OpenCollar bug tracker at http://code.google.com/p/opencollar/issues.
+
+Share these cuffs!  The beta is open to anyone who wants to try it.
+
+Note to developers:
+Version has recently increased to 1.3 to follow the naming convention of the cuffs. Additionally the following conventions apply: Scripts beginning with OpenCollar are reused from the collar. The Collar script version is shown directly behind the name without a - in it. The number behind it is the Opencuff Version of that script. If the Collar script has been modded a “cuffs” will be added to the script name.
+Examples:
+OpenCollar - auth 3.333 - 1.335 => Unmodified Auth script Version 3.333 from the collar, In the Cuffs as version 1.335
+OpenCollar - appearance cuffs 3.333 - 1.335 => Modified appearance script Version 3.333 from the collar, in the Cuffs as version 1.335
+Scripts beginning with OpenCuffs are specific to the Cuffs. They show the last version they have been modified in.
+There are scripts in sub prims for the chaining to work. Please read the designer guide to get more infos.
+If you want to allow the colors/textures of the cuffs and collar be kept in sync, you have to make sure the prims share the same names.

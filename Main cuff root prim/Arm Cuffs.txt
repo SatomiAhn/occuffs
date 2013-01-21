@@ -1,0 +1,13 @@
+# OpenCollar 8Cuffs Arms 1.380
+Back|Cuff-Back|illac=irlac~iruac=iluac
+Back2|Cuff-Back2|llac=rlac~ruac=luac~ollac=bocbelt~orlac=bocbelt
+#Back 2|shackles_back|llac=rlac
+Belt|Cuff-Belt2|orlac=rocbelt~ollac=locbelt~ruac=luac~bocbelt=irlac~bocbelt=illac
+Belt2|Cuff-Belt2|rlac=rocbelt~llac=locbelt~luac=ruac~ruac=bocbelt~bocbelt=luac
+Front|Cuff-Front|irlac=illac
+Front2|Cuff-Front2|irlac=ollac~orlac=illac~iluac=iruac
+# Front High|O-Pose|llac=rlac~orlac=foccollar
+# Hang|Cuff-Hanging|orlac=illac~oluac=oruac
+Head|Cuff-Head|rlac=llac~orlac=oruac~iluac=iruac~ollac=oluac
+Pinion|Cuff-Pinion|orlac=rocbelt~ollac=locbelt~bocbelt=ruac~luac=bocbelt~ruac=luac~ollac=oluac~orlac=oruac
+UShape|-Winter Seale - u-shape2|rlac=llac~illac=iluac~iruac=irlac~bocbelt=ollac~bocbelt=orlac
