@@ -104,7 +104,7 @@ integer RLV_REFRESH = 6001;//RLV plugins should reinstate their restrictions upo
 
 // preparation for online mode
 string g_szOnlineModeCommand="online";
-integer g_nOnline=TRUE;
+integer g_nOnline=FALSE; // For 3.7+ collars, there is no 'online' mode.
 
 //
 float g_nStartTime=2.5;

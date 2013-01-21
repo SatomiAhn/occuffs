@@ -1,3 +1,5 @@
+//
+// Version 3.700  RR fixed minor hiccups with initialization
 //Licensed under the GPLv2, with the additional requirement that these scripts remain "full perms" in Second Life.  See "OpenCollar License" for details.
 //new viewer checking method, as of 2.73
 //on rez, restart script
@@ -86,7 +88,7 @@ integer lastdetach; //unix time of the last detach: used for checking if the det
 
 debug(string str)
 {
-    //llOwnerSay(llGetScriptName() + ": " + str);
+    // llOwnerSay(llGetScriptName() + ": " + str);
 }
 
 Notify(key id, string msg, integer alsoNotifyWearer) {
@@ -102,7 +104,7 @@ Notify(key id, string msg, integer alsoNotifyWearer) {
 
 CheckVersion()
 {
-    //llOwnerSay("checking version");
+    debug("checking version");
     if (verbose)
     {
         Notify(wearer, "Attempting to enable Restrained Life Viewer functions.  " + rlvString+ " or higher is required for all features to work.", TRUE);
@@ -381,24 +383,21 @@ safeword (integer collartoo)
 // End of book keeping functions
 
 default
-{    
-
-        on_rez(integer start)
-        {
-            if (llGetOwner()!=wearer)
+{    // //no more self resets
+     //   on_rez(integer param)
+     //   {
+     //      llResetScript();
+     //   }
+     // 
+            state_entry()
             {
-                llResetScript();
+                wearer = llGetOwner();
+                //request setting from DB
+                llSleep(1.0);
+                llMessageLinked(LINK_THIS, HTTPDB_REQUEST, "rlvon", NULL_KEY);
+                SIT_CHANNEL=9999 + llFloor(llFrand(9999999.0));
+                debug( "Entered default state, sent HTTPDB_REQUEST");
             }
-        }
-
-        state_entry()
-        {
-            wearer = llGetOwner();
-            //request setting from DB
-            llSleep(1.0);
-            llMessageLinked(LINK_THIS, HTTPDB_REQUEST, "rlvon", NULL_KEY);
-            SIT_CHANNEL=9999 + llFloor(llFrand(9999999.0));
-        }
 
         link_message(integer sender, integer num, string str, key id)
         {
@@ -427,8 +426,8 @@ default
                 else if (str == "rlvon=0")
                 {//RLV is turned off in DB.  just switch to checked state without checking viewer
                     //llOwnerSay("rlvdb false");
-                    state checked;
                     llMessageLinked(LINK_THIS, RLV_OFF, "", NULL_KEY);
+                    state checked;
 
                 }
                 else if (str == "rlvon=1")
@@ -450,6 +449,12 @@ default
                 {
                     CheckVersion();
                 }
+                else if (token == "rlvon")
+                {
+                    llOwnerSay( "Unrecognized 'rlvon' setting "
+                        + value + ", checking viewer." ) ;
+                    CheckVersion();
+                }
             }
             else if ((num == HTTPDB_EMPTY && str == "rlvon"))
             {
@@ -461,10 +466,15 @@ default
             }
             else if (num == SUBMENU && str == submenu)
             {
-                if (num == SUBMENU)
-                {   //someone clicked "RLV" on the main menu.  Tell them we're not ready yet.
+                if (num == SUBMENU )
+                {   //someone clicked "RLV" on the main menu.  Tell them we're not ready yet
+                    // RR: But re-issue the check version anyway, since
+                    // we wouldn't get here unless the version command was lost somehow
+                    // such as being issued before the viewer was ready, or if the
+                    // default in the notecard is misspelled.
+                    CheckVersion() ;
                     Notify(id, "Still querying for viewer version.  Please try again in a minute.", FALSE);
-                    llResetScript();//Nan: why do we reset here?!  
+                    //llResetScript();//Nan: why do we reset here?!  
                 }
                 else if (num >= COMMAND_OWNER && num <= COMMAND_WEARER)//Nan: this code can't even execute! EVER!
                 {//someone used "RLV" chat command.  Tell them we're not ready yet.
@@ -478,7 +488,7 @@ default
         {
             if (channel == versionchannel)
             {
-                //llOwnerSay("heard " + message);
+                llOwnerSay("heard " + message);
                 llListenRemove(listener);
                 llSetTimerEvent(0.0);
                 //get the version to send to rlv plugins
@@ -497,7 +507,7 @@ default
                 llOwnerSay("Restrained Life functions enabled. " + message + " detected.");
                 viewercheck = TRUE;
 
-                llMessageLinked(LINK_THIS, RLV_ON, "", NULL_KEY);
+                llMessageLinked(LINK_THIS, RLV_ON, "1", NULL_KEY);
 
                 state checked;
             }
@@ -556,11 +566,6 @@ state checked
 {
     on_rez(integer param)
     {
-        if (llGetOwner()!=wearer)
-        {
-            llResetScript();
-        }
-
         if (llGetUnixTime()-lastdetach > 15) state default; //reset only if the detach delay was long enough (it could be an automatic reattach)
         else
         {
@@ -574,7 +579,7 @@ state checked
     }
     
     
-/* Bad!  (would prevent reattach on detach)    
+// Bad!  (would prevent reattach on detach)    
 //Nan: please use regular double slashes to comment things out.  That's the only way your comment will turn orange, which i think is an important visual cue for other people who have to read your script.
 //    attach(key id)
 //    {
@@ -583,7 +588,7 @@ state checked
 //            llOwnerSay("@clear");
 //        }
 //    }
-*/
+//
 
     attach(key id)
     {

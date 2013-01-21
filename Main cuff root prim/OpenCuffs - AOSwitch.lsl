@@ -68,7 +68,7 @@ integer     g_nSlowMode = TRUE;
 // variable for staying in place
 integer     g_nRLVArms = FALSE;
 integer     g_nRLVLegs = FALSE;
-integer     g_nRLVMode = FALSE;
+integer     g_nRLVMode = TRUE;
 
 
 
@@ -77,8 +77,8 @@ string      g_szWearerName;
 
 // slowing down wearer
 
-vector g_vBase_impulse = <0.5,0,0>;
-integer g_nDuration = 15;
+vector g_vBase_impulse = <0.7,0,0>;
+integer g_nDuration = 5;
 integer g_nStart_time;
 
 

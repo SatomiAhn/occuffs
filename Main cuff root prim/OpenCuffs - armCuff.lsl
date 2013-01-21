@@ -29,13 +29,11 @@ string      g_szRLVModeDisabled = "( ) RLV Restricions";
 string      g_szRLVModeToken = "rest";
 integer     g_nRLVModeAuth = FALSE;
 
-integer     g_nRemenu = FALSE;
-
 key g_keyDialogID;
 
 
 //MESSAGE MAP
-integer COMMAND_NOAUTH = 0;
+//integer COMMAND_NOAUTH = 0;
 integer COMMAND_OWNER = 500;
 integer COMMAND_SECOWNER = 501;
 integer COMMAND_GROUP = 502;
@@ -50,16 +48,15 @@ integer COMMAND_SAFEWORD = 510;  // new for safeword
 //integer SEND_IM = 1000; deprecated.  each script should send its own IMs now.  This is to reduce even the tiny bt of lag caused by having IM slave scripts
 integer POPUP_HELP = 1001;
 
-integer HTTPDB_SAVE = 2000;//scripts send messages on this channel to have settings saved to httpdb
+integer LM_SETTING_SAVE = 2000;//scripts send messages on this channel to have settings saved to httpdb
 //str must be in form of "token=value"
-integer HTTPDB_REQUEST = 2001;//when startup, scripts send requests for settings on this channel
-integer HTTPDB_RESPONSE = 2002;//the httpdb script will send responses on this channel
-integer HTTPDB_DELETE = 2003;//delete token from DB
-integer HTTPDB_EMPTY = 2004;//sent when a token has no value in the httpdb
+integer LM_SETTING_REQUEST = 2001;//when startup, scripts send requests for settings on this channel
+integer LM_SETTING_RESPONSE = 2002;//the httpdb script will send responses on this channel
+integer LM_SETTING_DELETE = 2003;//delete token from DB
+integer LM_SETTING_EMPTY = 2004;//sent by httpdb script when a token has no value in the db
 
 integer MENUNAME_REQUEST = 3000;
 integer MENUNAME_RESPONSE = 3001;
-integer SUBMENU = 3002;
 
 integer DIALOG = -9000;
 integer DIALOG_RESPONSE = -9001;
@@ -189,14 +186,14 @@ key ShortKey()
     return (key)(out + "-0000-0000-0000-000000000000");
 }
 
-key Dialog(key rcpt, string prompt, list choices, list utilitybuttons, integer page)
+key Dialog(key rcpt, string prompt, list choices, list utilitybuttons, integer page, integer iAuth)
 {
     key id = ShortKey();
-    llMessageLinked(LINK_SET, DIALOG, (string)rcpt + "|" + prompt + "|" + (string)page + "|" + llDumpList2String(choices, "`") + "|" + llDumpList2String(utilitybuttons, "`"), id);
+    llMessageLinked(LINK_SET, DIALOG, (string)rcpt + "|" + prompt + "|" + (string)page + "|" + llDumpList2String(choices, "`") + "|" + llDumpList2String(utilitybuttons, "`") + "|" + (string) iAuth, id);
     return id;
 }
 
-DoMenu(key id)
+DoMenu(key id, integer iAuth)
 {
     string prompt = "Pick an option.";
     list mybuttons = llListSort(localbuttons + buttons, 1, TRUE);
@@ -228,7 +225,7 @@ DoMenu(key id)
         mybuttons += [g_szRLVModeDisabled];
     }
 
-    g_keyDialogID=Dialog(id, prompt, mybuttons, [UPMENU], 0);
+    g_keyDialogID=Dialog(id, prompt, mybuttons, [UPMENU], 0, iAuth);
 }
 
 //===============================================================================
@@ -265,6 +262,90 @@ init()
 
 }
 
+integer UserCommand(integer iNum, string sStr, key kID)
+{
+    if (iNum > COMMAND_WEARER || iNum < COMMAND_OWNER) return FALSE; // sanity check
+    //owner, secowner, group, and wearer may currently change colors
+    if (sStr == "reset" && (iNum == COMMAND_OWNER || kID == g_keyWearer))
+    {
+        //clear saved settings
+        llMessageLinked(LINK_THIS, LM_SETTING_DELETE, dbtoken, NULL_KEY);
+        llResetScript();
+    }
+    if (sStr == "refreshmenu")
+    {
+        buttons = [];
+        llMessageLinked(LINK_SET, MENUNAME_REQUEST, submenu, NULL_KEY);
+    }
+
+    else if (startswith(sStr,"staymode"))
+    {
+        if ((g_nStayModeAuth!=0)&&(g_nStayModeAuth<iNum))
+        {
+            Notify(kID,"You are not allowed to change the stay mode.",FALSE);
+        }
+        else if (sStr=="staymode=off")
+            // disable the stay mode
+        {
+            g_nStayModeAuth=FALSE;
+            llMessageLinked(LINK_THIS,LM_SETTING_DELETE,g_szStayModeToken1,"");
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=off", NULL_KEY);
+            Notify(kID,llKey2Name(g_keyWearer)+ " will now be able to move, even when the legs are bound.", TRUE);
+        }
+        else if (sStr=="staymode=slow")
+            // enable the slow mode
+        {
+            g_nStayModeAuth=iNum;
+            g_nStayModeFixed=FALSE;
+            llMessageLinked(LINK_THIS,LM_SETTING_SAVE,g_szStayModeToken1+"="+(string)iNum+",S","");
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=slow", NULL_KEY);
+            Notify(kID,llKey2Name(g_keyWearer)+ " will now only able to move very slowly, when the legs are bound.", TRUE);
+            
+        }
+        else if (sStr=="staymode=on")
+            // enable the stay mode
+        {
+            g_nStayModeAuth=iNum;
+            g_nStayModeFixed=TRUE;
+            llMessageLinked(LINK_THIS,LM_SETTING_SAVE,g_szStayModeToken1+"="+(string)iNum+",F","");
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=on", NULL_KEY);
+            Notify(kID,llKey2Name(g_keyWearer)+ " will now NOT be able to move, when the legs are bound.", TRUE);
+            
+        }
+
+    }
+    else if (sStr=="rlvmode=off")
+        // disable the stay mode
+    {
+        if (g_nRLVModeAuth>=iNum)
+        {
+            g_nRLVModeAuth=FALSE;
+            llMessageLinked(LINK_THIS,LM_SETTING_DELETE,g_szRLVModeToken,"");
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=off", NULL_KEY);
+            Notify(kID,llKey2Name(g_keyWearer)+ " will now NOT be under RLV restrictions when bound.", TRUE);
+        }
+        else
+        {
+            Notify(kID,"You are not allowed to change the restriction mode.",FALSE);
+        }
+    }
+    else if (sStr=="rlvmode=on")
+        // enable the stay mode
+    {
+        g_nRLVModeAuth=iNum;
+        llMessageLinked(LINK_THIS,LM_SETTING_SAVE,g_szRLVModeToken+"="+(string)iNum,"");
+        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=on", NULL_KEY);
+        Notify(kID,llKey2Name(g_keyWearer)+ " will now be under RLV restrictions when bound.", TRUE);
+    }
+
+
+    else if (sStr == "menu "+ submenu||sStr == submenu)
+    {
+            DoMenu(kID, iNum);
+    }        
+    return TRUE;
+}
+
 default
 {
     state_entry()
@@ -281,239 +362,131 @@ default
                 llResetScript();
             }
         }
-        else
+        else if ( UserCommand(nNum, szMsg, keyID) ) {}
+        else if (nNum == MENUNAME_REQUEST)
         {
-            //owner, secowner, group, and wearer may currently change colors
-            if (szMsg == "reset" && (nNum == COMMAND_OWNER || nNum == COMMAND_WEARER))
-            {
-                //clear saved settings
-                llMessageLinked(LINK_THIS, HTTPDB_DELETE, dbtoken, NULL_KEY);
-                llResetScript();
-            }
-            else if (nNum >= COMMAND_OWNER && nNum <= COMMAND_WEARER)
-            {
-                if (szMsg == "refreshmenu")
+            llMessageLinked(LINK_THIS, MENUNAME_RESPONSE, parentmenu + "|" + submenu, NULL_KEY);
+        }
+        else if (nNum == MENUNAME_RESPONSE)
+        {
+            list parts = llParseString2List(szMsg, ["|"], []);
+            if (llList2String(parts, 0) == submenu)
+            {//someone wants to stick something in our menu
+                string button = llList2String(parts, 1);
+                if (llListFindList(buttons, [button]) == -1)
                 {
-                    buttons = [];
-                    llMessageLinked(LINK_SET, MENUNAME_REQUEST, submenu, NULL_KEY);
-                }
-
-                else if (startswith(szMsg,"staymode"))
-                {
-                    if ((g_nStayModeAuth!=0)&&(g_nStayModeAuth<nNum))
-                    {
-                        Notify(keyID,"You are not allowed to change the stay mode.",FALSE);
-                    }
-                    else if (szMsg=="staymode=off")
-                        // disable the stay mode
-                    {
-                        g_nStayModeAuth=FALSE;
-                        llMessageLinked(LINK_THIS,HTTPDB_DELETE,g_szStayModeToken1,"");
-                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=off", NULL_KEY);
-                        Notify(keyID,llKey2Name(g_keyWearer)+ " will now be able to move, even when the legs are bound.", TRUE);
-                    }
-                    else if (szMsg=="staymode=slow")
-                        // enable the slow mode
-                    {
-                        g_nStayModeAuth=nNum;
-                        g_nStayModeFixed=FALSE;
-                        llMessageLinked(LINK_THIS,HTTPDB_SAVE,g_szStayModeToken1+"="+(string)nNum+",S","");
-                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=slow", NULL_KEY);
-                        Notify(keyID,llKey2Name(g_keyWearer)+ " will now only able to move very slowly, when the legs are bound.", TRUE);
-                        
-                    }
-                    else if (szMsg=="staymode=on")
-                        // enable the stay mode
-                    {
-                        g_nStayModeAuth=nNum;
-                        g_nStayModeFixed=TRUE;
-                        llMessageLinked(LINK_THIS,HTTPDB_SAVE,g_szStayModeToken1+"="+(string)nNum+",F","");
-                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=on", NULL_KEY);
-                        Notify(keyID,llKey2Name(g_keyWearer)+ " will now NOT be able to move, when the legs are bound.", TRUE);
-                        
-                    }
-
-                    if (g_nRemenu)
-                    {
-                        g_nRemenu=FALSE;
-                        DoMenu(keyID);
-                    }
-                }
-                else if (szMsg=="rlvmode=off")
-                    // disable the stay mode
-                {
-                    if (g_nRLVModeAuth>=nNum)
-                    {
-                        g_nRLVModeAuth=FALSE;
-                        llMessageLinked(LINK_THIS,HTTPDB_DELETE,g_szRLVModeToken,"");
-                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=off", NULL_KEY);
-                        Notify(keyID,llKey2Name(g_keyWearer)+ " will now NOT be under RLV restrictions when bound.", TRUE);
-                    }
-                    else
-                    {
-                        Notify(keyID,"You are not allowed to change the restriction mode.",FALSE);
-                    }
-                    if (g_nRemenu)
-                    {
-                        g_nRemenu=FALSE;
-                        DoMenu(keyID);
-                    }
-                }
-                else if (szMsg=="rlvmode=on")
-                    // enable the stay mode
-                {
-                    g_nRLVModeAuth=nNum;
-                    llMessageLinked(LINK_THIS,HTTPDB_SAVE,g_szRLVModeToken+"="+(string)nNum,"");
-                    llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=on", NULL_KEY);
-                    Notify(keyID,llKey2Name(g_keyWearer)+ " will now be under RLV restrictions when bound.", TRUE);
-                    if (g_nRemenu)
-                    {
-                        g_nRemenu=FALSE;
-                        DoMenu(keyID);
-                    }
-                }
-
-
-
-            }
-            else if (nNum == MENUNAME_REQUEST)
-            {
-                llMessageLinked(LINK_THIS, MENUNAME_RESPONSE, parentmenu + "|" + submenu, NULL_KEY);
-            }
-            else if (nNum == MENUNAME_RESPONSE)
-            {
-                list parts = llParseString2List(szMsg, ["|"], []);
-                if (llList2String(parts, 0) == submenu)
-                {//someone wants to stick something in our menu
-                    string button = llList2String(parts, 1);
-                    if (llListFindList(buttons, [button]) == -1)
-                    {
-                        buttons = llListSort(buttons + [button], 1, TRUE);
-                    }
-                }
-            }
-
-            else if (nNum == SUBMENU && szMsg == submenu)
-            {
-                //we don't know the authority of the menu requester, so send a message through the auth system
-                //llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "Cuffs", keyID);
-                DoMenu(keyID);
-            }
-            else if (nNum == COMMAND_SAFEWORD)
-            {
-                llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "*:Stop", keyID);
-            }
-            else if (nNum == HTTPDB_RESPONSE)
-            {
-                if (startswith(szMsg,g_szStayModeToken1))
-                {
-                    list l=llParseString2List(llGetSubString(szMsg,llStringLength(g_szStayModeToken1)+1,-1),[","],[]);
-                    integer n=(integer)llList2String(l,0);
-                    string s=llList2String(l,1);
-                    if (n>0)
-                    {
-                        g_nStayModeAuth=n;
-                        if (s=="F") //fixed
-                        {
-                            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=on", NULL_KEY);
-                            g_nStayModeFixed=TRUE;
-                        }
-                        else
-                        {
-                            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=slow", NULL_KEY);
-                            g_nStayModeFixed=FALSE;
-                        }
-                    }
-                    else
-                    {
-                        g_nStayModeAuth=FALSE;
-                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=off", NULL_KEY);
-                    }
-
-                }
-                else if (startswith(szMsg,g_szRLVModeToken))
-                {
-                    integer n=(integer)llGetSubString(szMsg,llStringLength(g_szRLVModeToken)+1,-1);
-                    if (n>0)
-                    {
-                        g_nRLVModeAuth=n;
-                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=on", NULL_KEY);
-                    }
-                    else
-                    {
-                        g_nRLVModeAuth=FALSE;
-                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=off", NULL_KEY);
-                    }
-
-                }
-            }
-            else if (nNum == DIALOG_RESPONSE)
-            {
-                if(keyID == g_keyDialogID)
-                {
-                    g_nRemenu = FALSE;
-
-                    list menuparams = llParseString2List(szMsg, ["|"], []);
-                    key AV = (key)llList2String(menuparams, 0);
-                    string message = llList2String(menuparams, 1);
-                    integer page = (integer)llList2String(menuparams, 2);
-
-                    if (message == UPMENU)
-                    {
-                        llMessageLinked(LINK_THIS, SUBMENU, parentmenu, AV);
-                    }
-                    else if (~llListFindList(localbuttons, [message]))
-                    {
-                        if ( message == "Stop all" )
-                        {
-                            llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "*:Stop", AV);
-                            // Cleo: Call the menu again
-                            DoMenu(AV);
-                        }
-                    }
-                    else if (~llListFindList(buttons, [message]))
-                    {
-                        //we got a submenu selection
-                        llMessageLinked(LINK_THIS, SUBMENU, message, AV);
-                    }
-                    else if (message==g_szStayModeFixed)
-                        // disable the stay mode
-                    {
-                        g_nRemenu = TRUE;
-
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "staymode=off", AV);
-                    }
-                    else if (message==g_szStayModeSlow)
-                        // disable the stay mode
-                    {
-                        g_nRemenu = TRUE;
-
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "staymode=on", AV);
-                    }
-                    else if (message==g_szStayModeFree)
-                        // enable the stay mode
-                    {
-                        g_nRemenu = TRUE;
-
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "staymode=slow", AV);
-                    }
-                    else if (message==g_szRLVModeEnabled)
-                        // disable the stay mode
-                    {
-                        g_nRemenu = TRUE;
-
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "rlvmode=off", AV);
-                    }
-                    else if (message==g_szRLVModeDisabled)
-                        // enable the stay mode
-                    {
-                        g_nRemenu = TRUE;
-
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "rlvmode=on", AV);
-                    }
+                    buttons = llListSort(buttons + [button], 1, TRUE);
                 }
             }
         }
+        else if (nNum == COMMAND_SAFEWORD)
+        {
+            llMessageLinked(LINK_THIS, COMMAND_OWNER, "*:Stop", keyID);  // (SA) was COMMAND_NOAUTH... TODO : check what is actually needed
+        }
+        else if (nNum == LM_SETTING_RESPONSE)
+        {
+            if (startswith(szMsg,g_szStayModeToken1))
+            {
+                list l=llParseString2List(llGetSubString(szMsg,llStringLength(g_szStayModeToken1)+1,-1),[","],[]);
+                integer n=(integer)llList2String(l,0);
+                string s=llList2String(l,1);
+                if (n>0)
+                {
+                    g_nStayModeAuth=n;
+                    if (s=="F") //fixed
+                    {
+                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=on", NULL_KEY);
+            g_nStayModeFixed=TRUE;
+            }
+            else
+            {
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=slow", NULL_KEY);
+            g_nStayModeFixed=FALSE;
+            }
+        }
+        else
+        {
+            g_nStayModeAuth=FALSE;
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "staymode=off", NULL_KEY);
+        }
+
+        }
+        else if (startswith(szMsg,g_szRLVModeToken))
+        {
+        integer n=(integer)llGetSubString(szMsg,llStringLength(g_szRLVModeToken)+1,-1);
+        if (n>0)
+        {
+            g_nRLVModeAuth=n;
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=on", NULL_KEY);
+        }
+        else
+        {
+            g_nRLVModeAuth=FALSE;
+            llMessageLinked(LINK_THIS, LM_CUFF_CMD, "rlvmode=off", NULL_KEY);
+        }
+        }
+    }
+    else if (nNum == DIALOG_RESPONSE)
+    {
+        if(keyID == g_keyDialogID)
+        {
+
+        list menuparams = llParseString2List(szMsg, ["|"], []);
+        key AV = (key)llList2String(menuparams, 0);
+        string message = llList2String(menuparams, 1);
+        integer page = (integer)llList2String(menuparams, 2);
+        integer iAuth = (integer)llList2String(menuparams, 3);
+
+        if (message == UPMENU)
+        {
+            llMessageLinked(LINK_THIS, iAuth, "menu " + parentmenu, AV);
+        }
+        else if (~llListFindList(localbuttons, [message]))
+        {
+            if ( message == "Stop all" )
+            {
+                llMessageLinked(LINK_THIS, iAuth, "*:Stop", AV);
+                // Cleo: Call the menu again
+                DoMenu(AV, iAuth);
+            }
+        }
+        else if (~llListFindList(buttons, [message]))
+        {
+            //we got a submenu selection
+            llMessageLinked(LINK_THIS, iAuth, "menu " + message, AV);
+        }
+        else if (message==g_szStayModeFixed)
+            // disable the stay mode
+        {
+            llMessageLinked(LINK_THIS, iAuth, "staymode=off", AV);
+            DoMenu(AV, iAuth);
+        }
+        else if (message==g_szStayModeSlow)
+            // disable the stay mode
+        {
+            llMessageLinked(LINK_THIS, iAuth, "staymode=on", AV);
+            DoMenu(AV, iAuth);
+        }
+        else if (message==g_szStayModeFree)
+            // enable the stay mode
+        {
+            llMessageLinked(LINK_THIS, iAuth, "staymode=slow", AV);
+            DoMenu(AV, iAuth);
+        }
+        else if (message==g_szRLVModeEnabled)
+            // disable the stay mode
+        {
+            llMessageLinked(LINK_THIS, iAuth, "rlvmode=off", AV);
+            DoMenu(AV, iAuth);
+        }
+        else if (message==g_szRLVModeDisabled)
+            // enable the stay mode
+        {
+            llMessageLinked(LINK_THIS, iAuth, "rlvmode=on", AV);
+            DoMenu(AV, iAuth);
+        }
+        }
+    }
     }
 
     //on_rez(integer param)
