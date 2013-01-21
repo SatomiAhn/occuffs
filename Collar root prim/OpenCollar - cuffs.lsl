@@ -59,7 +59,7 @@ integer g_nUpdateActive= TRUE;
 
 // preparation for online mode
 string g_szOnlineModeCommand="online";
-integer g_nOnline=TRUE;
+integer g_nOnline=FALSE; // For 3.7 there IS no 'online' mode
 
 key wearer;
 
@@ -143,6 +143,16 @@ integer VersionOK()
     list params = llParseString2List(llGetObjectDesc(), ["~"], []);
     string name = llList2String(params, 0);
     string version = llList2String(params, 1);
+    if ( version == "X" ) 
+    {
+        key nc = llGetInventoryKey( "~version" ) ;
+        if ( nc != NULL_KEY )
+        {
+            //This is a version 3.7 or higher collar - just return true
+            // without doing any version checking.
+            return TRUE;
+        }
+    }
     
     if (llGetSubString(name,0,11)=="Delivery Box")
     // the script is in a delivery box, fall silently to sleep

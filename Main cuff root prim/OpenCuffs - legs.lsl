@@ -388,12 +388,20 @@ default
         }
         else if (auth >= COMMAND_OWNER && auth <= COMMAND_WEARER)
         {
-            if ( startswith(str,"*:") || startswith(str,"l:") )
+            if ( str == "unlock" )
+            {   
+                lastrank = 10000; 
+            }
+            else if ( startswith(str,"*:") || startswith(str,"l:") )
             {
                 //llOwnerSay("Bing:"+(string)auth+";"+(string)lastrank+";"+str);
                 if (auth <= lastrank)
                 {
                     if (llGetSubString(str, 2,-1)=="Stop")
+                    {
+                        lastrank = 10000;
+                    }
+                    else if ( id == g_keyWearer )
                     {
                         lastrank = 10000;
                     }

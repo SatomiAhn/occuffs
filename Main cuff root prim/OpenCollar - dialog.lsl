@@ -51,7 +51,7 @@ string UPMENU = "^"; // string to identify the UPMENU button in the utility butt
 //string SWAPBTN = "swap";
 //string SYNCBTN = "sync";
 string BLANK = " ";
-integer timeout = 300;
+integer timeout = 60;
 integer repeat = 5;//how often the timer will go off, in seconds
 
 list menus;//9-strided list in form listenchannel, dialogid, listener, starttime, recipient, prompt, list buttons, utility buttons, currentpage

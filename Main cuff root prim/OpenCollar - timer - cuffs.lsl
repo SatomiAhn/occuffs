@@ -1,20 +1,26 @@
-// Open collar time script tweaked for use in Open collar Cuffs.
-// Put it in the main cuff (right forearm)
-// Changes to the original timer Plugin are marked in the code.
-// - Removed RLV button
-// - Unleash is now used for unchain (releasing the sub from Cuff pose and removing the chains.)
-// added prefixes to the HTTP tokes for locking
+//OpenCollar - timer - 3.586
+//Modified for cuffs
 
-list times;
-integer timeslength;
-integer currenttime;
-integer ontime;
-integer lasttime;
-integer firstontime;
-integer firstrealtime;
-integer lastrez;
+// LVs 0.001
+//      Hacks to make it play nice with others.
+//      1) Does not give lockout error unless timers are actually running.
+//      2) TIMER_EVENT for timers ending and starting.
+//      3) LINK_WHAT = LINK_SET (or LINK_THIS, whatever turns you on.)
+//      4) g_sToyName... because we are not always included in a collar.
+//      5) DoMenu whatever changed to return on NULL_KEY, in case of internal calls.
+//      6) TimerStart() factored out of the state for cleaness. (I had originally planned to have another way to call it, but decided just calling it with COMMAND_OWNER was cleaner.)
+//      7) Added a = version of the time setting, so you can set a time exactly from another script.
+//      8) MENUNAME_REMOVE support.
+list g_lTimes;
+integer g_iTimesLength;
+integer g_iCurrentTime;
+integer g_iOnTime;
+integer g_iLastTime;
+integer g_iFirstOnTime;
+integer g_iFirstRealTime;
+integer g_iLastRez;
 integer n;//for loops
-string message;
+string g_sMessage;
 integer MAX_TIME=0x7FFFFFFF;
 
 integer ATTACHMENT_COMMAND = 602;
@@ -27,8 +33,12 @@ integer REAL_TIME_EXACT=5;
 integer ON_TIME=3;
 integer ON_TIME_EXACT=7;
 
-key wearer;
-integer interfaceChannel;
+//CUFFS: Don't make the sim work overtime trying to find other prims.
+integer LINK_WHAT = LINK_THIS;
+string g_sToyName = "cuffs";
+
+//key g_kWearer; why is this in here twice.
+integer g_iInterfaceChannel;
 // end time keeper
 
 // Template for creating a OpenCOllar Plugin - OpenCollar Version 3.0xx
@@ -36,52 +46,48 @@ integer interfaceChannel;
 //Licensed under the GPLv2, with the additional requirement that these scripts remain "full perms" in Second Life.  See "OpenCollar License" for details.
 //Collar Cuff Menu
 
-string submenu = "Timer"; // Name of the submenu
-// changed for cuffs
-string parentmenu = "Main"; // name of the menu, where the menu plugs in
+string g_sSubMenu = "Timer"; // Name of the submenu
+string g_sParentMenu = "AddOns"; // mname of the menu, where the menu plugs in
 
-// added for cuffs
-string g_szPrefix; // prefix for storing to the DB
+key g_kMenuID;
+key g_kOnMenuID;
+key g_kRealMenuID;
 
-key menuid;
-key onmenuid;
-key realmenuid;
+key g_kWearer; // key of the current wearer to reset only on owner changes
 
-//key g_keyWearer; // key of the current wearer to reset only on owner changes
+list g_lLocalButtons = ["realtime","online"]; // any local, not changing buttons which will be used in this plugin, leave emty or add buttons as you like
+list g_lTimeButtons = ["clear","+00:01","+00:05","+00:30","+03:00","+24:00","-00:01","-00:05","-00:30","-03:00","-24:00"];
 
-list localbuttons = ["realtime","online"]; // any local, not changing buttons which will be used in this plugin, leave emty or add buttons as you like
-list timebuttons = ["clear","+00:01","+00:05","+00:30","+03:00","+24:00","-00:01","-00:05","-00:30","-03:00","-24:00"];
+integer g_iOnRunning;
+integer g_iOnSetTime;
+integer g_iOnTimeUpAt;
+integer g_iLastOnTime;
+integer g_iClockTimeAtLastOnTime;
+integer g_iRealRunning;
+integer g_iRealSetTime;
+integer g_iRealTimeUpAt;
+integer g_iLastRealTime;
+integer g_iClockTimeAtLastRealTime;
 
-integer onrunning;
-integer onsettime;
-integer ontimeupat;
-//integer lastontime;
-//integer clocktimeatlastontime;
-integer realrunning;
-integer realsettime;
-integer realtimeupat;
-//integer lastrealtime;
-//integer clocktimeatlastrealtime;
-
-integer unlockcollar;
-integer collarlocked;
-integer clearRLVrestions;
-integer unleash;
-integer both;
-integer whocanchangetime;
-integer whocanchangeleash;
-integer whocanchangeothersettings;
+integer g_iUnlockCollar;
+integer g_iCollarLocked;
+integer g_iClearRLVRestions;
+integer g_iUnleash;
+integer g_iBoth;
+integer g_iWhoCanChangeTime;
+integer g_iWhoCanChangeLeash;
+integer g_iWhoCanOtherSettings;
 
 
-//integer clocktime;
-integer timechange;
-//integer onupdated;
-//integer realupdated;
+integer g_iClockTime;
+integer g_iTimeChange;
+integer g_iOnUpdate;
+integer g_iRealUpdated;
 
-//integer whichmenu;
-//key menuwho;
+integer g_iWhichMenu;
+key g_kMenuWho;
 
-list buttons;
+list lButtons;
 
 //OpenCollae MESSAGE MAP
 // messages for authenticating users
@@ -138,6 +144,9 @@ integer DIALOG = -9000;
 integer DIALOG_RESPONSE = -9001;
 integer DIALOG_TIMEOUT = -9002;
 
+// Added by WhiteFire
+integer TIMER_EVENT = -10000; // str = "start" or "end". For start, either "online" or "realtime".
+
 integer WEARERLOCKOUT=620;
 
 
@@ -145,25 +154,24 @@ integer WEARERLOCKOUT=620;
 string UPMENU = "^";
 string MORE = ">";
 
-Notify(key id, string msg, integer alsoNotifyWearer)
+Notify(key kID, string sMsg, integer iAlsoNotifyWearer)
 {
-    if (id == wearer)
+    if (kID == g_kWearer)
     {
-        llOwnerSay(msg);
+        llOwnerSay(sMsg);
     }
     else
     {
-        llInstantMessage(id,msg);
-        if (alsoNotifyWearer)
+        llInstantMessage(kID,sMsg);
+        if (iAlsoNotifyWearer)
         {
-            llOwnerSay(msg);
+            llOwnerSay(sMsg);
         }
-    }
+    }    
 }
 
-
 //===============================================================================
-//= parameters   :    string    szMsg   message string received
+//= parameters   :    string    sMsg    message string received
 //=
 //= return        :    none
 //=
@@ -172,13 +180,13 @@ Notify(key id, string msg, integer alsoNotifyWearer)
 //===============================================================================
 
 
-debug(string szMsg)
+Debug(string sMsg)
 {
-    //llOwnerSay(llGetScriptName() + ": " + szMsg);
+    //llOwnerSay(llGetScriptName() + ": " + sMsg);
 }
 
 //===============================================================================
-//= parameters   :    string    szMsg   message string received
+//= parameters   :    string    sMsg    message string received
 //=
 //= return        :    integer TRUE/FALSE
 //=
@@ -186,33 +194,33 @@ debug(string szMsg)
 //=
 //===============================================================================
 
-integer nStartsWith(string szHaystack, string szNeedle) // http://wiki.secondlife.com/wiki/llSubStringIndex
+integer StartsWith(string sHaystack, string sNeedle) // http://wiki.secondlife.com/wiki/llSubStringIndex
 {
-    return (llDeleteSubString(szHaystack, llStringLength(szNeedle), -1) == szNeedle);
+    return (llDeleteSubString(sHaystack, llStringLength(sNeedle), -1) == sNeedle);
 }
 
 
 key ShortKey()
 {//just pick 8 random hex digits and pad the rest with 0.  Good enough for dialog uniqueness.
-    string chars = "0123456789abcdef";
-    integer length = 16;
-    string out;
+    string sChars = "0123456789abcdef";
+    integer iLength = 16;
+    string sOut;
     integer n;
     for (n = 0; n < 8; n++)
     {
-        integer index = (integer)llFrand(16);//yes this is correct; an integer cast rounds towards 0.  See the llFrand wiki entry.
-        out += llGetSubString(chars, index, index);
+        integer iIndex = (integer)llFrand(16);//yes this is correct; an integer cast rounds towards 0.  See the llFrand wiki entry.
+        sOut += llGetSubString(sChars, iIndex, iIndex);
     }
-
-    return (key)(out + "-0000-0000-0000-000000000000");
+     
+    return (key)(sOut + "-0000-0000-0000-000000000000");
 }
 
-key Dialog(key rcpt, string prompt, list choices, list utilitybuttons, integer page)
+key Dialog(key kRCPT, string sPrompt, list lChoices, list lUtilityButtons, integer iPage)
 {
-    key id = ShortKey();
-    llMessageLinked(LINK_SET, DIALOG, (string)rcpt + "|" + prompt + "|" + (string)page + "|" + llDumpList2String(choices, "`") + "|" + llDumpList2String(utilitybuttons, "`"), id);
-    return id;
-}
+    key kID = ShortKey();
+    llMessageLinked(LINK_WHAT, DIALOG, (string)kRCPT + "|" + sPrompt + "|" + (string)iPage + "|" + llDumpList2String(lChoices, "`") + "|" + llDumpList2String(lUtilityButtons, "`"), kID);
+    return kID;
+} 
 
 //===============================================================================
 //= parameters   :    string    keyID   key of person requesting the menu
@@ -225,106 +233,131 @@ key Dialog(key rcpt, string prompt, list choices, list utilitybuttons, integer p
 
 DoMenu(key keyID)
 {
-    debug("timeremaning:"+(string)(ontimeupat-ontime));
-    string prompt = "Pick an option.";
-    list mybuttons = localbuttons + buttons;
+    if (keyID)
+    {
+        // not needed we jsut want theh false
+    }
+    else
+    {
+        return;
+    }
+
+    Debug("timeremaning:"+(string)(g_iOnTimeUpAt-g_iOnTime));
+    string sPrompt = "Pick an option.";
+    list lMyButtons = g_lLocalButtons + lButtons;
 
     //fill in your button list and additional prompt here
-    prompt += "\n Online timer - "+int2time(onsettime);
-    if (onrunning==1)
+    sPrompt += "\n Online timer - "+Int2Time(g_iOnSetTime);
+    if (g_iOnRunning==1)
     {
-        prompt += "\n Online timer - "+int2time(ontimeupat-ontime)+" left";
-        //mybuttons += ["stop online"];
+        sPrompt += "\n Online timer - "+Int2Time(g_iOnTimeUpAt-g_iOnTime)+" left";
+        //lMyButtons += ["stop online"];
     }
     else
     {
-        prompt += "\n Online timer - not running";
-        //mybuttons += ["start online"];
+        sPrompt += "\n Online timer - not running";
+        //lMyButtons += ["start online"];
     }
-    prompt += "\n Realtime timer - "+int2time(realsettime);
-    if (realrunning==1)
+    sPrompt += "\n Realtime timer - "+Int2Time(g_iRealSetTime);
+    if (g_iRealRunning==1)
     {
-        prompt += "\n Realtime timer - "+int2time(realtimeupat-currenttime)+" left";
-        //mybuttons += ["stop realtime"];
+        sPrompt += "\n Realtime timer - "+Int2Time(g_iRealTimeUpAt-g_iCurrentTime)+" left";
+        //lMyButtons += ["stop realtime"];
     }
     else
     {
-        prompt += "\n Realtime timer - not running";
-        //mybuttons += ["start realtime"];
+        sPrompt += "\n Realtime timer - not running";
+        //lMyButtons += ["start realtime"];
     }
-    if (realrunning || onrunning)
+    if (g_iBoth)
     {
-        mybuttons += ["stop"];
-    }
-    else if (realsettime || onsettime)
-    {
-        mybuttons += ["start"];
-    }
-    if (unlockcollar)
-    {
-        prompt += "\n the cuffs will be unlocked when the timer goes off";
-        mybuttons += ["(*)unlock"];
+        sPrompt += "\n When BOTH the online and realtime timer go off:";
+        lMyButtons += ["(*)bothtime"];
     }
     else
     {
-        prompt += "\n the cuffs will not be unlocked when the timer goes off";
-        mybuttons += ["()unlock"];
+        sPrompt += "\n When EITHER the online or realtime timer go off:";
+        lMyButtons += ["()bothtime"];
     }
-    if (unleash)
+    if (g_iRealRunning || g_iOnRunning)
     {
-        prompt += "\n the cuffs will be unchained when the timer goes off";
-        mybuttons += ["(*)unchain"]; //changed Button from unleash to unchain for use in cuffs
+        lMyButtons += ["stop"];
+    }
+    else if (g_iRealSetTime || g_iOnSetTime)
+    {
+        lMyButtons += ["start"];    
+    }
+    if (g_iUnlockCollar)
+    {
+        sPrompt += "\n\t the " + g_sToyName + " WILL be unlocked";
+        lMyButtons += ["(*)unlock"];
     }
     else
     {
-        prompt += "\n the cuffs will not be unchained when the timer goes off";
-        mybuttons += ["()unchain"]; //changed Button from unleash to unchain for use in cuffs
+        sPrompt += "\n\t the " + g_sToyName + " will NOT be unlocked";
+        lMyButtons += ["()unlock"];
     }
-    //if (clearRLVrestions) //comented out for use in cuffs RLV restrictions does not make sense there.
-    //{
-    //comented out for use in cuffs RLV restrictions does not make sense there.
-    //prompt += "\n the RLV restions will be cleared when the timer goes off";
-    //mybuttons += ["(*)clearRLV"];
-    //}
-    //else
-    //{
-    //comented out for use in cuffs RLV restrictions does not make sense there.
-    //prompt += "\n the RLV restions will not be cleared when the timer goes off";
-    //mybuttons += ["()clearRLV"];
-    //}
+    if (g_iUnleash)
+    {
+    //CUFFS: Change 'unleash' to 'unchain' to allow functionallity to clear poses.
+        sPrompt += "\n\t the " + g_sToyName + " WILL be unchained";
+        lMyButtons += ["(*)unchain"];
+    }
+    else
+    {
+    //CUFFS: Change 'unleash' to 'unchain' to allow functionallity to clear poses.
+        sPrompt += "\n\t the " + g_sToyName + " will NOT be unchained";
+        lMyButtons += ["()unchain"];
+    }
 
-    llListSort(localbuttons, 1, TRUE); // resort menu buttons alphabetical
+//CUFFS: commented out for use in cuffs RLV restrictions does not make sense there.
+//    if (g_iClearRLVRestions)
+//    {
+//        sPrompt += "\n\t the RLV restions WILL be cleared";
+//        lMyButtons += ["(*)clearRLV"];
+//    }
+//    else
+//    {
+//        sPrompt += "\n\t the RLV restions will NOT be cleared";
+//        lMyButtons += ["()clearRLV"];
+//    }
 
-    menuid = Dialog(keyID, prompt, mybuttons, [UPMENU], 0);
+    llListSort(g_lLocalButtons, 1, TRUE); // resort menu buttons alphabetical
+
+    g_kMenuID = Dialog(keyID, sPrompt, lMyButtons, [UPMENU], 0);
 }
 DoOnMenu(key keyID)
 {
-    string prompt = "Pick an option.";
-    prompt += "\n Online timer - "+int2time(onsettime);
-    if (onrunning)
+    if (keyID == NULL_KEY) return;
+    
+    string sPrompt = "Pick an option.";
+    sPrompt += "\n Online timer - "+Int2Time(g_iOnSetTime);
+    if (g_iOnRunning)
     {
-        prompt += "\n Online timer - "+int2time(ontimeupat-ontime)+" left";
+        sPrompt += "\n Online timer - "+Int2Time(g_iOnTimeUpAt-g_iOnTime)+" left";
     }
     else
     {
-        prompt += "\n Online timer - not running";
+        sPrompt += "\n Online timer - not running";
     }
-    onmenuid = Dialog(keyID, prompt, timebuttons, [UPMENU], 0);
+    g_kOnMenuID = Dialog(keyID, sPrompt, g_lTimeButtons, [UPMENU], 0);
 }
 DoRealMenu(key keyID)
 {
-    string prompt = "Pick an option.";
+    if (keyID == NULL_KEY) return;
+
+    string sPrompt = "Pick an option.";
     //fill in your button list and additional prompt here
-    prompt += "\n Realtime timer - " + int2time(realsettime);
-    if (realrunning)
+    sPrompt += "\n Realtime timer - " + Int2Time(g_iRealSetTime);
+    if (g_iRealRunning)
     {
-        prompt += "\n Realtime timer - "+int2time(realtimeupat-currenttime)+" left";
+        sPrompt += "\n Realtime timer - "+Int2Time(g_iRealTimeUpAt-g_iCurrentTime)+" left";
     }
     else
     {
-        prompt += "\n Realtime timer - not running";
+        sPrompt += "\n Realtime timer - not running";
     }
-    realmenuid = Dialog(keyID, prompt, timebuttons, [UPMENU], 0);
+    g_kRealMenuID = Dialog(keyID, sPrompt, g_lTimeButtons, [UPMENU], 0);
 }
 
 
@@ -342,170 +375,200 @@ string GetDBPrefix()
     return llList2String(llParseString2List(llGetObjectDesc(), ["~"], []), 2);
 }
 
-string int2time(integer time)
+string Int2Time(integer sTime)
 {
-    if (time<0) time=0;
-    integer secs=time%60;
-    time = (time-secs)/60;
-    integer mins=time%60;
-    time = (time-mins)/60;
-    integer hours=time%24;
-    integer days = (time-hours)/24;
-
+    if (sTime<0) sTime=0;
+    integer iSecs=sTime%60;
+    sTime = (sTime-iSecs)/60;
+    integer iMins=sTime%60;
+    sTime = (sTime-iMins)/60;
+    integer iHours=sTime%24;
+    integer iDays = (sTime-iHours)/24;
+    
     //this is the onley line that needs changing...
-    return ( (string)days+" days "+
-        llGetSubString("0"+(string)hours,-2,-1) + ":"+
-        llGetSubString("0"+(string)mins,-2,-1) + ":"+
-        llGetSubString("0"+(string)secs,-2,-1) );
-    //return (string)days+":"+(string)hours+":"+(string)mins+":"+(string)secs;
+    return ( (string)iDays+" days "+
+        llGetSubString("0"+(string)iHours,-2,-1) + ":"+
+        llGetSubString("0"+(string)iMins,-2,-1) + ":"+
+        llGetSubString("0"+(string)iSecs,-2,-1) );
+    //return (string)iDays+":"+(string)iHours+":"+(string)iMins+":"+(string)iSecs;
 }
 
 TimerWhentOff()
 {
-    if(both && (onrunning || realrunning))
+    if(g_iBoth && (g_iOnRunning == 1 || g_iRealRunning == 1))
     {
         return;
     }
-    llMessageLinked(LINK_THIS, WEARERLOCKOUT, "off", "");
-    onsettime=realsettime=0;
-    onrunning=realrunning=0;
-    ontimeupat=realtimeupat=0;
-    whocanchangetime=504;
-    if(unlockcollar)
+    llMessageLinked(LINK_WHAT, WEARERLOCKOUT, "off", "");
+    g_iOnSetTime=g_iRealSetTime=0;
+    g_iOnRunning=g_iRealRunning=0;
+    g_iOnTimeUpAt=g_iRealTimeUpAt=0;
+    g_iWhoCanChangeTime=504;
+    if(g_iUnlockCollar)
     {
-        llMessageLinked(LINK_THIS, COMMAND_OWNER, "unlock", wearer);
+        llMessageLinked(LINK_WHAT, COMMAND_OWNER, "unlock", g_kWearer);
     }
-    if(clearRLVrestions)
+    if(g_iClearRLVRestions)
     {
-        llMessageLinked(LINK_THIS, COMMAND_OWNER, "clear", wearer);
-        if(!unlockcollar && collarlocked)
+        llMessageLinked(LINK_WHAT, COMMAND_OWNER, "clear", g_kWearer);
+        if(!g_iUnlockCollar && g_iCollarLocked)
         {
             llSleep(2);
-            llMessageLinked(LINK_THIS, COMMAND_OWNER, "lock", wearer);
+            llMessageLinked(LINK_WHAT, COMMAND_OWNER, "lock", g_kWearer);
         }
     }
-    if(unleash)
+    if(g_iUnleash)
     {
-        //changed to Stop to release from animation in cuffs
-        llMessageLinked(LINK_THIS, COMMAND_OWNER, "*:Stop", "");
-        //llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "*:Stop", "5f616b34-b5be-4bc1-a28f-b73b11b7271d");
+        //CUFFS: changed to Stop to release from animation in cuffs
+        //llMessageLinked(LINK_WHAT, COMMAND_OWNER, "unleash", "");
+        llMessageLinked(LINK_WHAT, COMMAND_OWNER, "*:Stop", "");
     }
-    unlockcollar=clearRLVrestions=unleash=0;
-    Notify(wearer, "The timer has expired", TRUE);
+    g_iUnlockCollar=g_iClearRLVRestions=g_iUnleash=0;
+    Notify(g_kWearer, "The timer has expired", TRUE);
+    
+    llMessageLinked(LINK_WHAT, TIMER_EVENT, "end", "");
 }
+
+TimerStart(integer perm)
+{
+    // do What has to be Done
+    g_iWhoCanChangeTime = perm;
+    if(g_iRealSetTime)
+    {
+        //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(g_iRealSetTime), "");
+        g_iRealTimeUpAt=g_iCurrentTime+g_iRealSetTime;
+        llMessageLinked(LINK_WHAT, WEARERLOCKOUT, "on", "");
+        llMessageLinked(LINK_WHAT, TIMER_EVENT, "start", "realtime");
+        g_iRealRunning=1;
+    }
+    else
+    {
+        g_iRealRunning=3;
+    }
+    if(g_iOnSetTime)
+    {
+        //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnSetTime), "");
+        g_iOnTimeUpAt=g_iOnTime+g_iOnSetTime;
+        llMessageLinked(LINK_WHAT, WEARERLOCKOUT, "on", "");
+        llMessageLinked(LINK_WHAT, TIMER_EVENT, "start", "online");
+        
+        g_iOnRunning=1;
+    }
+    else
+    {
+        g_iOnRunning=3;
+    }
+}
+
 
 default
 {
     state_entry()
     {
-        lasttime=llGetUnixTime();
+        g_iLastTime=llGetUnixTime();
         llSetTimerEvent(1);
-        wearer = llGetOwner();
-        interfaceChannel = (integer)("0x" + llGetSubString(wearer,30,-1));
-        if (interfaceChannel > 0)
+        g_kWearer = llGetOwner();
+        g_iInterfaceChannel = (integer)("0x" + llGetSubString(g_kWearer,30,-1));
+        if (g_iInterfaceChannel > 0)
         {
-            interfaceChannel = -interfaceChannel;
+              g_iInterfaceChannel = -g_iInterfaceChannel;
         }
-        firstontime=MAX_TIME;
-        firstrealtime=MAX_TIME;
-        llMessageLinked(LINK_THIS, TIMER_FROMMESSAGE, "timer|sendtimers", "");
-        llWhisper(interfaceChannel, "timer|sendtimers");
+        g_iFirstOnTime=MAX_TIME;
+        g_iFirstRealTime=MAX_TIME;
+        llMessageLinked(LINK_WHAT, TIMER_FROMMESSAGE, "timer|sendtimers", "");
+        llWhisper(g_iInterfaceChannel, "timer|sendtimers");
 
         //end of timekeeper
-        //wearer=llGetOwner();
+        //g_kWearer=llGetOwner();
 
         // sleep a sceond to allow all scripts to be initialized
         llSleep(1.0);
         // send reequest to main menu and ask other menus if the wnt to register with us
-        llMessageLinked(LINK_THIS, MENUNAME_REQUEST, submenu, NULL_KEY);
-        llMessageLinked(LINK_THIS, MENUNAME_RESPONSE, parentmenu + "|" + submenu, NULL_KEY);
-
+        llMessageLinked(LINK_WHAT, MENUNAME_REQUEST, g_sSubMenu, NULL_KEY);
+        llMessageLinked(LINK_WHAT, MENUNAME_RESPONSE, g_sParentMenu + "|" + g_sSubMenu, NULL_KEY);
+        
         //set settings
-        unlockcollar=0;
-        clearRLVrestions=0;
-        unleash=0;
-        both=0;
-        whocanchangetime=504;
-        whocanchangeleash=504;
-        whocanchangeothersettings=504;
-
-        // added for cuffs, we read the prefix from the dexcription, too lock the cuffs
-        g_szPrefix = GetDBPrefix();
-
+        g_iUnlockCollar=0;
+        g_iClearRLVRestions=0;
+        g_iUnleash=0;
+        g_iBoth=0;
+        g_iWhoCanChangeTime=504;
+        g_iWhoCanChangeLeash=504;
+        g_iWhoCanOtherSettings=504;
 
     }
-    on_rez(integer start_param)
+    on_rez(integer iParam)
     {
-        lasttime=lastrez=llGetUnixTime();
-        llMessageLinked(LINK_THIS, TIMER_FROMMESSAGE, "timer|sendtimers", "");
-        llWhisper(interfaceChannel, "timer|sendtimers");
-        if (realrunning == 1 || onrunning == 1)
+        g_iLastTime=g_iLastRez=llGetUnixTime();
+        llMessageLinked(LINK_WHAT, TIMER_FROMMESSAGE, "timer|sendtimers", "");
+        llWhisper(g_iInterfaceChannel, "timer|sendtimers");
+        if (g_iRealRunning == 1 || g_iOnRunning == 1)
         {
-            llMessageLinked(LINK_THIS, WEARERLOCKOUT, "on", "");
-            debug("timer is running real:"+(string)realrunning+" on:"+(string)onrunning);
+            llMessageLinked(LINK_WHAT, WEARERLOCKOUT, "on", "");
+            Debug("timer is running real:"+(string)g_iRealRunning+" on:"+(string)g_iOnRunning);
         }
     }
 
     // listen for likend messages fromOC scripts
-    link_message(integer sender, integer num, string str, key id)
+    link_message(integer iSender, integer iNum, string sStr, key kID)
     {
-        list info  = llParseString2List (str, ["|"], []);
-        if((num==TIMER_TOMESSAGE || num==ATTACHMENT_FORWARD)&&llList2String(info, 0)=="timer")//request for us
+        list info  = llParseString2List (sStr, ["|"], []);
+        if((iNum==TIMER_TOMESSAGE || iNum==ATTACHMENT_FORWARD)&&llList2String(info, 0)=="timer")//request for us
         {
-            debug(str);
-            string command = llList2String(info, 1);
+            Debug(sStr);
+            string sCommand = llList2String(info, 1);
             integer type = llList2Integer(info, 2);
-            if(command=="settimer")
+            if(sCommand=="settimer")
             {
                 //should check values but I am not yet.
                 if(type==REAL_TIME)
                 {
-                    integer newtime = llList2Integer(info, 3) +currenttime;
-                    times=times+[REAL_TIME,newtime];
-                    if(firstrealtime>newtime)
+                    integer newtime = llList2Integer(info, 3) +g_iCurrentTime;
+                    g_lTimes=g_lTimes+[REAL_TIME,newtime];
+                    if(g_iFirstRealTime>newtime)
                     {
-                        firstrealtime=newtime;
+                        g_iFirstRealTime=newtime;
                     }
-                    message="timer|timeis|"+(string)REAL_TIME+"|"+(string)currenttime;
+                    g_sMessage="timer|timeis|"+(string)REAL_TIME+"|"+(string)g_iCurrentTime;
                 }
                 else if(type==REAL_TIME_EXACT)
                 {
                     integer newtime = llList2Integer(info, 3);
-                    times=times+[REAL_TIME,newtime];
-                    if(firstrealtime>newtime)
+                    g_lTimes=g_lTimes+[REAL_TIME,newtime];
+                    if(g_iFirstRealTime>newtime)
                     {
-                        firstrealtime=newtime;
+                        g_iFirstRealTime=newtime;
                     }
                 }
                 else if(type==ON_TIME)
                 {
-                    integer newtime = llList2Integer(info, 3) +ontime;
-                    times=times+[ON_TIME,newtime];
-                    if(firstontime>newtime)
+                    integer newtime = llList2Integer(info, 3) +g_iOnTime;
+                    g_lTimes=g_lTimes+[ON_TIME,newtime];
+                    if(g_iFirstOnTime>newtime)
                     {
-                        firstontime=newtime;
+                        g_iFirstOnTime=newtime;
                     }
-                    message="timer|timeis|"+(string)ON_TIME+"|"+(string)ontime;
+                    g_sMessage="timer|timeis|"+(string)ON_TIME+"|"+(string)g_iOnTime;
                 }
                 else if(type==ON_TIME_EXACT)
                 {
-                    integer newtime = llList2Integer(info, 3) +ontime;
-                    times=times+[ON_TIME,newtime];
-                    if(firstontime>newtime)
+                    integer newtime = llList2Integer(info, 3) +g_iOnTime;
+                    g_lTimes=g_lTimes+[ON_TIME,newtime];
+                    if(g_iFirstOnTime>newtime)
                     {
-                        firstontime=newtime;
+                        g_iFirstOnTime=newtime;
                     }
                 }
             }
-            else if(command=="gettime")
+            else if(sCommand=="gettime")
             {
                 if(type==REAL_TIME)
                 {
-                    message="timer|timeis|"+(string)REAL_TIME+"|"+(string)currenttime;
+                    g_sMessage="timer|timeis|"+(string)REAL_TIME+"|"+(string)g_iCurrentTime;
                 }
                 else if(type==ON_TIME)
                 {
-                    message="timer|timeis|"+(string)ON_TIME+"|"+(string)ontime;
+                    g_sMessage="timer|timeis|"+(string)ON_TIME+"|"+(string)g_iOnTime;
                 }
             }
             else
@@ -513,786 +576,534 @@ default
                 return;
                 //message got sent to us or something went wrong
             }
-            if(num==ATTACHMENT_FORWARD)
+            if(iNum==ATTACHMENT_FORWARD)
             {
-                llWhisper(interfaceChannel, message);//need to wispear
+                llWhisper(g_iInterfaceChannel, g_sMessage);//need to wispear
             }
-            else if(num==TIMER_TOMESSAGE)
+            else if(iNum==TIMER_TOMESSAGE)
             {
-                llMessageLinked(LINK_THIS, TIMER_FROMMESSAGE, message, "");//inside script
-            }
-        }
-        else if(num == COMMAND_WEARERLOCKEDOUT && str == "menu")
-        {
-            Notify(id , "You are locked out of the cuffs until the timer expires", FALSE);
-        }
-        else if (num == LOCALSETTING_DELETE )
-        {
-            if (str == "leashedto")
-            {
-                whocanchangeleash=504;
+                llMessageLinked(LINK_WHAT, TIMER_FROMMESSAGE, g_sMessage, "");//inside script
             }
         }
-        else if (num == HTTPDB_DELETE)
+        else if(iNum == COMMAND_WEARERLOCKEDOUT && sStr == "menu")
         {
-            // added prefix for cuffs
-            if (str == g_szPrefix + "locked")
+            if (g_iRealRunning || g_iRealRunning)
+                Notify(kID , "You are locked out of the " + g_sToyName + " until the timer expires", FALSE);
+        }
+        else if (iNum == LOCALSETTING_DELETE )
+        {
+            if (sStr == "leashedto")
             {
-                collarlocked=0;
+                g_iWhoCanChangeLeash=504;
             }
         }
-        else if (num == LOCALSETTING_SAVE)
+        else if (iNum == HTTPDB_DELETE)
         {
-            if (llGetSubString(str, 0, 8) == "leashedto")
+            if (sStr == "locked")
             {
-                integer temp = llList2Integer( llParseString2List( str , [","] , [] ) , -1 );
-                if (temp < whocanchangeleash)
+                g_iCollarLocked=0;
+            }
+        }
+        else if (iNum == LOCALSETTING_SAVE)
+        {
+            if (llGetSubString(sStr, 0, 8) == "leashedto")
+            {
+                integer temp = llList2Integer( llParseString2List( sStr , [","] , [] ) , 1 );
+                if (temp < g_iWhoCanChangeLeash)
                 {
-                    whocanchangeleash=temp;
-                    unleash=0;
+                    g_iWhoCanChangeLeash=temp;
+                    g_iUnleash=0;
                 }
             }
         }
-        else if (num == HTTPDB_SAVE)
+        else if (iNum == HTTPDB_SAVE)
         {
-            // added prefix for cuffs
-            if (str == g_szPrefix + "locked=1")
+            if (sStr == "locked=1")
             {
-                collarlocked=1;
+                g_iCollarLocked=1;
             }
         }
-        else if (num == HTTPDB_RESPONSE)
+        else if (iNum == HTTPDB_RESPONSE)
         {
-            list params = llParseString2List(str, ["="], []);
-            string token = llList2String(params, 0);
-            string value = llList2String(params, 1);
-            // added prefix for cuffs
-            if (token == g_szPrefix + "locked")
+            list lParams = llParseString2List(sStr, ["="], []);
+            string sToken = llList2String(lParams, 0);
+            string sValue = llList2String(lParams, 1);
+            if (sToken == "locked")
             {
-                collarlocked=(integer)value;
+                g_iCollarLocked=(integer)sValue;
             }
         }
-        else if (num == SUBMENU && str == submenu)
+        else if (iNum == SUBMENU && sStr == g_sSubMenu)
         {
             //someone asked for our menu
-            //give this plugin's menu to id
-            DoMenu(id);
+            //give this plugin's menu to kID
+            DoMenu(kID);
         }
-        else if (num == MENUNAME_REQUEST && str == parentmenu)
+        else if (iNum == MENUNAME_REQUEST && sStr == g_sParentMenu)
             // our parent menu requested to receive buttons, so send ours
         {
 
-            llMessageLinked(LINK_THIS, MENUNAME_RESPONSE, parentmenu + "|" + submenu, NULL_KEY);
+            llMessageLinked(LINK_WHAT, MENUNAME_RESPONSE, g_sParentMenu + "|" + g_sSubMenu, NULL_KEY);
         }
-        else if (num == MENUNAME_RESPONSE)
+        else if (iNum == MENUNAME_RESPONSE)
             // a button is sned ot be added to a plugin
         {
-            list parts = llParseString2List(str, ["|"], []);
-            if (llList2String(parts, 0) == submenu)
+            list lParts = llParseString2List(sStr, ["|"], []);
+            if (llList2String(lParts, 0) == g_sSubMenu)
             {//someone wants to stick something in our menu
-                string button = llList2String(parts, 1);
-                if (llListFindList(buttons, [button]) == -1)
+                string sButton = llList2String(lParts, 1);
+                if (llListFindList(lButtons, [sButton]) == -1)
                     // if the button isnt in our benu yet, than we add it
                 {
-                    buttons = llListSort(buttons + [button], 1, TRUE);
+                    lButtons = llListSort(lButtons + [sButton], 1, TRUE);
                 }
             }
         }
-        else if (num >= COMMAND_OWNER && num <= COMMAND_WEARER)
+        else if (iNum == MENUNAME_REMOVE)
+            // a button is sned ot be added to a plugin
+        {
+            integer iIndex;
+            list lParts = llParseString2List(sStr, ["|"], []);
+            if (llList2String(lParts, 0) == g_sSubMenu)
+            {//someone wants to stick something in our menu
+                string sButton = llList2String(lParts, 1);
+                iIndex = llListFindList(lButtons, [sButton]);
+                if (iIndex != -1)
+                    // if the button is in the menu, remove it
+                {
+                    lButtons = llDeleteSubList(lButtons, iIndex, iIndex);
+                }
+            }
+        }
+        else if (iNum >= COMMAND_OWNER && iNum <= COMMAND_WEARER)
             // a validated command from a owner, secowner, groupmember or the wear has been received
             // can also be used to listen to chat commands
         {
-            if (llToLower(str) == "timer")
+            if (llToLower(sStr) == "timer")
             {
-                DoMenu(id);
+                DoMenu(kID);
             }
-            else if(llGetSubString(str, 0, 5) == "timer ")
+            else if(llGetSubString(sStr, 0, 5) == "timer ")
             {
-                string message=llGetSubString(str, 6, -1);
+                string sMsg=llGetSubString(sStr, 6, -1);
                 //we got a response for something we handle locally
-                if (message == "realtime")
+                if (sMsg == "realtime")
                 {
                     // do What has to be Done
-                    debug("realtime");
+                    Debug("realtime");
                     // and restart the menu if wantend/needed
-                    DoRealMenu(id);
+                    DoRealMenu(kID);
                 }
-                else if (message == "online")
+                else if (sMsg == "online")
                 {
                     // do What has to be Done
-                    debug("online");
+                    Debug("online");
                     // and restart the meuu if wantend/needed
-                    DoOnMenu(id);
+                    DoOnMenu(kID);
                 }
-                else if (message == "start")
+                else if (sMsg == "start")
                 {
                     // do What has to be Done
-                    whocanchangetime = num;
-                    if(realsettime)
-                    {
-                        //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realsettime), "");
-                        realtimeupat=currenttime+realsettime;
-                        llMessageLinked(LINK_THIS, WEARERLOCKOUT, "on", "");
-
-                        realrunning=1;
-                    }
-                    else
-                    {
-                        realrunning=3;
-                    }
-                    if(onsettime)
-                    {
-                        //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(onsettime), "");
-                        ontimeupat=ontime+onsettime;
-                        llMessageLinked(LINK_THIS, WEARERLOCKOUT, "on", "");
-
-                        onrunning=1;
-                    }
-                    else
-                    {
-                        onrunning=3;
-                    }
+                    TimerStart(iNum);
+                    
                     // and restart the meuu if wantend/needed
-                    DoMenu(id);
+                    if(kID != g_kWearer)
+                    {
+                        DoMenu(kID);
+                    }
                 }
-                else if (message == "stop")
+                else if (sMsg == "stop")
                 {
                     // do What has to be Done
                     TimerWhentOff();
                     // and restart the meuu if wantend/needed
-                    DoMenu(id);
+                    DoMenu(kID);
                 }
-                else if(message=="(*)unlock")
+                else if (sMsg == "(*)bothtime")
                 {
-                    if(num == COMMAND_OWNER)
+                    // do What has to be Done
+                    g_iBoth = FALSE;
+                    // and restart the meuu if wantend/needed
+                    DoMenu(kID);
+                }
+                else if (sMsg == "()bothtime")
+                {
+                    // do What has to be Done
+                    g_iBoth = TRUE;
+                    // and restart the meuu if wantend/needed
+                    DoMenu(kID);
+                }
+                else if(sMsg=="(*)unlock")
+                {
+                    if(iNum == COMMAND_OWNER)
                     {
-                        unlockcollar=0;
-                        DoMenu(id);
+                        g_iUnlockCollar=0;
+                        DoMenu(kID);
                     }
                     else
                     {
-                        Notify(id,"Only the owner can change if the cuffs unlock when the timer runs out.",FALSE);
+                        Notify(kID,"Only the owner can change if the " + g_sToyName + " unlocks when the timer runs out.",FALSE);
                     }
                 }
-                else if(message=="()unlock")
+                else if(sMsg=="()unlock")
                 {
-                    if(num == COMMAND_OWNER)
+                    if(iNum == COMMAND_OWNER)
                     {
-                        unlockcollar=1;
-                        DoMenu(id);
+                        g_iUnlockCollar=1;
+                        DoMenu(kID);
                     }
                     else
                     {
-                        Notify(id,"Only the owner can change if the cuffs unlock when the timer runs out.",FALSE);
+                        Notify(kID,"Only the owner can change if the " + g_sToyName + " unlocks when the timer runs out.",FALSE);
                     }
                 }
-                else if(message=="(*)clearRLV")
+                else if(sMsg=="(*)clearRLV")
                 {
-                    if(num == COMMAND_WEARER)
+                    if(iNum == COMMAND_WEARER)
                     {
-                        Notify(id,"You canot change if the RLV settings are cleared",FALSE);
+                        Notify(kID,"You cannot change if the RLV settings are cleared",FALSE);
                     }
                     else
                     {
-                        clearRLVrestions=0;
-                        DoMenu(id);
+                        g_iClearRLVRestions=0;
+                        DoMenu(kID);
                     }
                 }
-                else if(message=="()clearRLV")
+                else if(sMsg=="()clearRLV")
                 {
-                    if(num == COMMAND_WEARER)
+                    if(iNum == COMMAND_WEARER)
                     {
-                        Notify(id,"You canot change if the RLV settings are cleared",FALSE);
+                        Notify(kID,"You cannot change if the RLV settings are cleared",FALSE);
                     }
                     else
                     {
-                        clearRLVrestions=1;
-                        DoMenu(id);
+                        g_iClearRLVRestions=1;
+                        DoMenu(kID);
                     }
                 }
-                else if(message=="(*)unchain")
+        //CUFFS: Dialog was changed to 'unchain' from 'unleash'
+                else if(sMsg=="(*)unchain")
                 {
-                    if(num <= whocanchangeleash)
+                    if(iNum <= g_iWhoCanChangeLeash)
                     {
-                        unleash=0;
-                        DoMenu(id);
+                        g_iUnleash=0;
+                        DoMenu(kID);
                     }
                     else
                     {
-                        Notify(id,"Only the someone who can leash the sub can change if the cuffs unleash when the timer runs out.",FALSE);
+            //CUFFS: Modify 'unleashed' to 'is unchained' for use with cuffs.
+                        Notify(kID,"Only the someone who can release the sub can change if the " + g_sToyName + " is unchained when the timer runs out.",FALSE);
                     }
                 }
-                else if(message=="()unchain")
+        //CUFFS: Dialog was changed to 'unchain' from 'unleash'
+                else if(sMsg=="()unchain")
                 {
-                    if(num <= whocanchangeleash)
+                    if(iNum <= g_iWhoCanChangeLeash)
                     {
-                        unleash=1;
-                        DoMenu(id);
+                        g_iUnleash=1;
+                        DoMenu(kID);
                     }
                     else
                     {
-                        Notify(id,"Only the someone who can leash the sub can change if the collar unleashes when the timer runs out.",FALSE);
+            //CUFFS: Modify 'unleashed' to 'is unchained' for use with cuffs.
+                        Notify(kID,"Only the someone who can release the sub can change if the " + g_sToyName + " is unchained when the timer runs out.",FALSE);
                     }
                 }
-            }
-            if(llGetSubString(str, 0, 1) == "on")
-            {
-                string message=llGetSubString(str, 2, -1);
-                if (num <= whocanchangetime)
+                else if(llGetSubString(sMsg, 0, 5) == "online")
                 {
-                    if (message == "clear")
-                    {
-                        onsettime=ontimeupat=0;
-                        if(onrunning == 1)
-                        {
-                            //unlock
-                            onrunning=0;
-                            TimerWhentOff();
-                        }
-                    }
-                    else if (message == "+00:01")
-                    {
-                        timechange=1*60;
-                        onsettime += timechange;
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                        }
-                        else if(onrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(onsettime), "");
-                            ontimeupat=ontime+onsettime;
-                            onrunning=1;
-                        }
-                    }
-                    else if (message == "+00:05")
-                    {
-                        timechange=5*60;
-                        onsettime += timechange;
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                        }
-                        else if(onrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(onsettime), "");
-                            ontimeupat=ontime+onsettime;
-                            onrunning=1;
-                        }
-                    }
-                    else if (message == "+00:30")
-                    {
-                        timechange=30*60;
-                        onsettime += timechange;
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                        }
-                        else if(onrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(onsettime), "");
-                            ontimeupat=ontime+onsettime;
-                            onrunning=1;
-                        }
-                    }
-                    else if (message == "+03:00")
-                    {
-                        timechange=3*60*60;
-                        onsettime += timechange;
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                        }
-                        else if(onrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(onsettime), "");
-                            ontimeupat=ontime+onsettime;
-                            onrunning=1;
-                        }
-                    }
-                    else if (message == "+24:00")
-                    {
-                        timechange=24*60*60;
-                        onsettime += timechange;
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                        }
-                        else if(onrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(onsettime), "");
-                            ontimeupat=ontime+onsettime;
-                            onrunning=1;
-                        }
-                    }
-                    else if (message == "-00:01")
-                    {
-                        timechange=-1*60;
-                        onsettime += timechange;
-                        if (onsettime<0)
-                        {
-                            onsettime=0;
-                        }
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            if (ontimeupat<=ontime)
-                            {
-                                //unlock
-                                onrunning=onsettime=ontimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                            }
-                        }
-                    }
-                    else if (message == "-00:05")
-                    {
-                        timechange=-5*60;
-                        onsettime += timechange;
-                        if (onsettime<0)
-                        {
-                            onsettime=0;
-                        }
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            if (ontimeupat<=ontime)
-                            {
-                                //unlock
-                                onrunning=onsettime=ontimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                            }
-                        }
-                    }
-                    else if (message == "-00:30")
-                    {
-                        timechange=-30*60;
-                        onsettime += timechange;
-                        if (onsettime<0)
-                        {
-                            onsettime=0;
-                        }
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            if (ontimeupat<=ontime)
-                            {
-                                //unlock
-                                onrunning=onsettime=ontimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                            }
-                        }
-                    }
-                    else if (message == "-03:00")
-                    {
-                        timechange=-3*60*60;
-                        onsettime += timechange;
-                        if (onsettime<0)
-                        {
-                            onsettime=0;
-                        }
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            if (ontimeupat<=ontime)
-                            {
-                                //unlock
-                                onrunning=onsettime=ontimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                            }
-                        }
-                    }
-                    else if (message == "-24:00")
-                    {
-                        timechange=-24*60*60;
-                        onsettime += timechange;
-                        if (onsettime<0)
-                        {
-                            onsettime=0;
-                        }
-                        if (onrunning==1)
-                        {
-                            ontimeupat += timechange;
-                            if (ontimeupat<=ontime)
-                            {
-                                //unlock
-                                onrunning=onsettime=ontimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(ontimeupat-lastontime), "");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        return;
-                    }
+                    sMsg="on" + llStringTrim(llGetSubString(sMsg, 6, -1), STRING_TRIM_HEAD);                    
                 }
-                DoOnMenu(id);
-            }
-            else if(llGetSubString(str, 0, 3) == "real")
-            {
-                string message=llGetSubString(str, 4, -1);
-                if (num <= whocanchangetime)
+                if(llGetSubString(sMsg, 0, 1) == "on")
                 {
-                    if (message == "clear")
+                    sMsg=llStringTrim(llGetSubString(sMsg, 2, -1), STRING_TRIM_HEAD);
+                    if (iNum <= g_iWhoCanChangeTime)
                     {
-                        realsettime=realtimeupat=0;
-                        if(realrunning == 1)
+                        list lTimes = llParseString2List(llGetSubString(sMsg, 1, -1), [":"], []);
+                        if (sMsg == "clear")
                         {
-                            //unlock
-                            realrunning=0;
-                            TimerWhentOff();
-                        }
-                    }
-                    else if (message == "+00:01")
-                    {
-                        timechange=1*60;
-                        realsettime += timechange;
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                        }
-                        else if(realrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realsettime), "");
-                            realtimeupat=currenttime+realsettime;
-                            realrunning=1;
-                        }
-                    }
-                    else if (message == "+00:05")
-                    {
-                        timechange=5*60;
-                        realsettime += timechange;
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                        }
-                        else if(realrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realsettime), "");
-                            realtimeupat=currenttime+realsettime;
-                            realrunning=1;
-                        }
-                    }
-                    else if (message == "+00:30")
-                    {
-                        timechange=30*60;
-                        realsettime += timechange;
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                        }
-                        else if(realrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realsettime), "");
-                            realtimeupat=currenttime+realsettime;
-                            realrunning=1;
-                        }
-                    }
-                    else if (message == "+03:00")
-                    {
-                        timechange=3*60*60;
-                        realsettime += timechange;
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                        }
-                        else if(realrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realsettime), "");
-                            realtimeupat=currenttime+realsettime;
-                            realrunning=1;
-                        }
-                    }
-                    else if (message == "+24:00")
-                    {
-                        timechange=24*60*60;
-                        realsettime += timechange;
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                        }
-                        else if(realrunning==3)
-                        {
-                            //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realsettime), "");
-                            realtimeupat=currenttime+realsettime;
-                            realrunning=1;
-                        }
-                    }
-                    else if (message == "-00:01")
-                    {
-                        timechange=-1*60;
-                        realsettime += timechange;
-                        if (realsettime<0)
-                        {
-                            realsettime=0;
-                        }
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            if (realtimeupat<=currenttime)
+                            g_iOnSetTime=g_iOnTimeUpAt=0;
+                            if(g_iOnRunning == 1)
                             {
                                 //unlock
-                                realrunning=realsettime=realtimeupat=0;
+                                g_iOnRunning=0;
                                 TimerWhentOff();
                             }
-                            else
+                        }
+                        else if (llGetSubString(sMsg, 0, 0) == "+")
+                        {
+                            g_iTimeChange=llList2Integer(lTimes,0)*60*60+llList2Integer(lTimes,1)*60;
+                            g_iOnSetTime += g_iTimeChange;
+                            if (g_iOnRunning==1)
                             {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
+                                g_iOnTimeUpAt += g_iTimeChange;
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnTimeUpAt-g_iLastOnTime), "");
                             }
+                            else if(g_iOnRunning==3)
+                            {
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnSetTime), "");
+                                g_iOnTimeUpAt=g_iOnTime+g_iOnSetTime;
+                                g_iOnRunning=1;
+                            }
+                        }
+                        else if (llGetSubString(sMsg, 0, 0) == "-")
+                        {
+                            g_iTimeChange=-(llList2Integer(lTimes,0)*60*60+llList2Integer(lTimes,1)*60);
+                            g_iOnSetTime += g_iTimeChange;
+                            if (g_iOnSetTime<0)
+                            {
+                                g_iOnSetTime=0;
+                            }
+                            if (g_iOnRunning==1)
+                            {
+                                g_iOnTimeUpAt += g_iTimeChange;
+                                if (g_iOnTimeUpAt<=g_iOnTime)
+                                {
+                                    //unlock
+                                    g_iOnRunning=g_iOnSetTime=g_iOnTimeUpAt=0;
+                                    TimerWhentOff();
+                                }
+                                else
+                                {
+                                    //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnTimeUpAt-g_iLastOnTime), "");
+                                }
+                            }
+                        }
+                        else if (llGetSubString(sMsg, 0, 0) == "=")
+                        {
+                            g_iTimeChange=llList2Integer(lTimes,0)*60*60+llList2Integer(lTimes,1)*60;
+                            if (g_iTimeChange <= 0) return; // use clear.
+    
+                            g_iOnSetTime = g_iTimeChange;
+                            if (g_iOnRunning==1)
+                            {
+                                g_iOnTimeUpAt = g_iOnTime + g_iTimeChange;
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnTimeUpAt-g_iLastOnTime), "");
+                            }
+                            else if(g_iOnRunning==3)
+                            {
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnSetTime), "");
+                                g_iOnTimeUpAt=g_iOnTime + g_iTimeChange;
+                                g_iOnRunning=1;
+                            }
+                        }
+                        else
+                        {
+                            return;
                         }
                     }
-                    else if (message == "-00:05")
-                    {
-                        timechange=-5*60;
-                        realsettime += timechange;
-                        if (realsettime<0)
-                        {
-                            realsettime=0;
-                        }
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            if (realtimeupat<=currenttime)
-                            {
-                                //unlock
-                                realrunning=realsettime=realtimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                            }
-                        }
-                    }
-                    else if (message == "-00:30")
-                    {
-                        timechange=-30*60;
-                        realsettime += timechange;
-                        if (realsettime<0)
-                        {
-                            realsettime=0;
-                        }
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            if (realtimeupat<=currenttime)
-                            {
-                                //unlock
-                                realrunning=realsettime=realtimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                            }
-                        }
-                    }
-                    else if (message == "-03:00")
-                    {
-                        timechange=-3*60*60;
-                        realsettime += timechange;
-                        if (realsettime<0)
-                        {
-                            realsettime=0;
-                        }
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            if (realtimeupat<=currenttime)
-                            {
-                                //unlock
-                                realrunning=realsettime=realtimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                            }
-                        }
-                    }
-                    else if (message == "-24:00")
-                    {
-                        timechange=-24*60*60;
-                        realsettime += timechange;
-                        if (realsettime<0)
-                        {
-                            realsettime=0;
-                        }
-                        if (realrunning==1)
-                        {
-                            realtimeupat += timechange;
-                            if (realtimeupat<=currenttime)
-                            {
-                                //unlock
-                                realrunning=realsettime=realtimeupat=0;
-                                TimerWhentOff();
-                            }
-                            else
-                            {
-                                //llMessageLinked(LINK_THIS, TIMER_TOMESSAGE, "timer|settimer|"+(string)REAL_TIME+"|"+(string)(realtimeupat-lastrealtime), "");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        return;
-                    }
+                    DoOnMenu(kID);
                 }
-                DoRealMenu(id);
+                else if(llGetSubString(sMsg, 0, 7) == "realtime")
+                {
+                    sMsg="real" + llStringTrim(llGetSubString(sMsg, 6, -1), STRING_TRIM_HEAD);
+                }
+                if(llGetSubString(sMsg, 0, 3) == "real")
+                {
+                    sMsg=llStringTrim(llGetSubString(sMsg, 4, -1), STRING_TRIM_HEAD);
+                    list lTimes = llParseString2List(llGetSubString(sMsg, 1, -1), [":"], []);
+                    if (iNum <= g_iWhoCanChangeTime)
+                    {
+                        if (sMsg == "clear")
+                        {
+                            g_iRealSetTime=g_iRealTimeUpAt=0;
+                            if(g_iRealRunning == 1)
+                            {
+                                //unlock
+                                g_iRealRunning=0;
+                                TimerWhentOff();
+                            }
+                        }
+                        else if (llGetSubString(sMsg, 0, 0) == "+")
+                        {
+                            g_iTimeChange=llList2Integer(lTimes,0)*60*60+llList2Integer(lTimes,1)*60;
+                            g_iRealSetTime += g_iTimeChange;
+                            if (g_iRealRunning==1)
+                            {
+                                g_iRealTimeUpAt += g_iTimeChange;
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnTimeUpAt-g_iLastOnTime), "");
+                            }
+                            else if(g_iRealRunning==3)
+                            {
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnSetTime), "");
+                                g_iRealTimeUpAt=g_iCurrentTime+g_iRealSetTime;
+                                g_iRealRunning=1;
+                            }
+                        }
+                        else if (llGetSubString(sMsg, 0, 0) == "-")
+                        {
+                            g_iTimeChange=-(llList2Integer(lTimes,0)*60*60+llList2Integer(lTimes,1)*60);
+                            g_iRealSetTime += g_iTimeChange;
+                            if (g_iRealSetTime<0)
+                            {
+                                g_iRealSetTime=0;
+                            }
+                            if (g_iRealRunning==1)
+                            {
+                                g_iRealTimeUpAt += g_iTimeChange;
+                                if (g_iRealTimeUpAt<=g_iCurrentTime)
+                                {
+                                    //unlock
+                                    g_iRealRunning=g_iRealSetTime=g_iRealTimeUpAt=0;
+                                    TimerWhentOff();
+                                }
+                                else
+                                {
+                                    //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnTimeUpAt-g_iLastOnTime), "");
+                                }
+                            }
+                        }
+                        else if (llGetSubString(sMsg, 0, 0) == "=")
+                        {
+                            g_iTimeChange=llList2Integer(lTimes,0)*60*60+llList2Integer(lTimes,1)*60;
+                            if (g_iTimeChange <= 0) return; // Not handled.
+                            
+                            g_iRealSetTime = g_iTimeChange;
+                            if (g_iRealRunning==1)
+                            {
+                                g_iRealTimeUpAt = g_iCurrentTime+g_iRealSetTime;
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnTimeUpAt-g_iLastOnTime), "");
+                            }
+                            else if(g_iRealRunning==3)
+                            {
+                                //llMessageLinked(LINK_WHAT, TIMER_TOMESSAGE, "timer|settimer|"+(string)ON_TIME+"|"+(string)(g_iOnSetTime), "");
+                                g_iRealTimeUpAt=g_iCurrentTime+g_iRealSetTime;
+                                g_iRealRunning=1;
+                            }
+                        }
+                        else
+                        {
+                            return;
+                        }
+                    }
+                    DoRealMenu(kID);
+                }
             }
         }
-        else if (num == DIALOG_RESPONSE)
+        else if (iNum == DIALOG_RESPONSE)
         {
-            if (llListFindList([menuid, onmenuid, realmenuid], [id]) != -1)
+            if (llListFindList([g_kMenuID, g_kOnMenuID, g_kRealMenuID], [kID]) != -1)
             {//this is one of our menus
-                list menuparams = llParseString2List(str, ["|"], []);
-                key av = (key)llList2String(menuparams, 0);
-                string message = llList2String(menuparams, 1);
-                integer page = (integer)llList2String(menuparams, 2);
-                if (id == menuid)
-                {
-
+                list lMenuParams = llParseString2List(sStr, ["|"], []);
+                key kAv = (key)llList2String(lMenuParams, 0);          
+                string sMsg = llList2String(lMenuParams, 1);                                         
+                integer iPage = (integer)llList2String(lMenuParams, 2);                 
+                if (kID == g_kMenuID)
+                {            
+                    
                     // request to change to parrent menu
-                    if (message == UPMENU)
+                    if (sMsg == UPMENU)
                     {
-                        //give av the parent menu
-                        llMessageLinked(LINK_THIS, SUBMENU, parentmenu, av);
+                        //give kAv the parent menu
+                        llMessageLinked(LINK_WHAT, SUBMENU, g_sParentMenu, kAv);
                     }
-                    else if (llListFindList(buttons, [message]))
+                    else if (llListFindList(lButtons, [sMsg]))
                     {
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "timer "+message, av);
+                        llMessageLinked(LINK_WHAT, COMMAND_NOAUTH, "timer "+sMsg, kAv);
                     }
-                    else if (~llListFindList(buttons, [message]))
+                    else if (~llListFindList(lButtons, [sMsg]))
                     {
                         //we got a command which another command pluged into our menu
-                        llMessageLinked(LINK_THIS, SUBMENU, message, av);
+                        llMessageLinked(LINK_WHAT, SUBMENU, sMsg, kAv);
                     }
                 }
-                else if (id == onmenuid)
+                else if (kID == g_kOnMenuID)
                 {
-                    if (message == UPMENU)
+                    if (sMsg == UPMENU)
                     {
-                        DoMenu(av);
+                        DoMenu(kAv);
                     }
                     else
                     {
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "on"+message, av);
+                        llMessageLinked(LINK_WHAT, COMMAND_NOAUTH, "timer on"+sMsg, kAv);
                     }
                 }
-                else if (id == realmenuid)
+                else if (kID == g_kRealMenuID)
                 {
-                    if (message == UPMENU)
+                    if (sMsg == UPMENU)
                     {
-                        DoMenu(av);
+                        DoMenu(kAv);
                     }
                     else
                     {
-                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "real"+message, av);
+                        llMessageLinked(LINK_WHAT, COMMAND_NOAUTH, "timer real"+sMsg, kAv);
                     }
-                }
-            }
+                }                  
+            }          
         }
     }
 
     timer()
     {
-        currenttime=llGetUnixTime();
-        if (currenttime<(lastrez+60))
+        g_iCurrentTime=llGetUnixTime();
+        if (g_iCurrentTime<(g_iLastRez+60))
         {
-            return;
+           return;
         }
-        if ((currenttime-lasttime)<60)
+        if ((g_iCurrentTime-g_iLastTime)<60)
         {
-            ontime+=currenttime-lasttime;
+            g_iOnTime+=g_iCurrentTime-g_iLastTime;
         }
-        if(ontime>=firstontime)
+        if(g_iOnTime>=g_iFirstOnTime)
         {
             //could store which is need but if both are trigered it will have to send both anyway I prefer not to check for that.
-            message="timer|timeis|"+(string)ON_TIME+"|"+(string)ontime;
-            llWhisper(interfaceChannel, message);
-            llMessageLinked(LINK_THIS, TIMER_FROMMESSAGE, message, "");
-
-            firstontime=MAX_TIME;
-            timeslength=llGetListLength(times);
-            for(n = 0; n < timeslength; n = n + 2)// send notice and find the next time.
+            g_sMessage="timer|timeis|"+(string)ON_TIME+"|"+(string)g_iOnTime;
+            llWhisper(g_iInterfaceChannel, g_sMessage);
+            llMessageLinked(LINK_WHAT, TIMER_FROMMESSAGE, g_sMessage, "");
+            
+            g_iFirstOnTime=MAX_TIME;
+            g_iTimesLength=llGetListLength(g_lTimes);
+            for(n = 0; n < g_iTimesLength; n = n + 2)// send notice and find the next time.
             {
-                if(llList2Integer(times, n)==ON_TIME)
+                if(llList2Integer(g_lTimes, n)==ON_TIME)
                 {
-                    while(llList2Integer(times, n+1)<=ontime&&llList2Integer(times, n)==ON_TIME&&times!=[])
+                    while(llList2Integer(g_lTimes, n+1)<=g_iOnTime&&llList2Integer(g_lTimes, n)==ON_TIME&&g_lTimes!=[])
                     {
-                        times=llDeleteSubList(times, n, n+1);
-                        timeslength=llGetListLength(times);
+                        g_lTimes=llDeleteSubList(g_lTimes, n, n+1);
+                        g_iTimesLength=llGetListLength(g_lTimes);
                     }
-                    if(llList2Integer(times, n)==ON_TIME&&llList2Integer(times, n+1)<firstontime)
+                    if(llList2Integer(g_lTimes, n)==ON_TIME&&llList2Integer(g_lTimes, n+1)<g_iFirstOnTime)
                     {
-                        firstontime=llList2Integer(times, n+1);
+                        g_iFirstOnTime=llList2Integer(g_lTimes, n+1);
                     }
                 }
             }
         }
-        if(currenttime>=firstrealtime)
+        if(g_iCurrentTime>=g_iFirstRealTime)
         {
             //could store which is need but if both are trigered it will have to send both anyway I prefer not to check for that.
-            message="timer|timeis|"+(string)REAL_TIME+"|"+(string)currenttime;
-            llWhisper(interfaceChannel, message);
-            llMessageLinked(LINK_THIS, TIMER_FROMMESSAGE, message, "");
-
-            firstrealtime=MAX_TIME;
-            timeslength=llGetListLength(times);
-            for(n = 0; n < timeslength; n = n + 2)// send notice and find the next time.
+            g_sMessage="timer|timeis|"+(string)REAL_TIME+"|"+(string)g_iCurrentTime;
+            llWhisper(g_iInterfaceChannel, g_sMessage);
+            llMessageLinked(LINK_WHAT, TIMER_FROMMESSAGE, g_sMessage, "");
+            
+            g_iFirstRealTime=MAX_TIME;
+            g_iTimesLength=llGetListLength(g_lTimes);
+            for(n = 0; n < g_iTimesLength; n = n + 2)// send notice and find the next time.
             {
-                if(llList2Integer(times, n)==REAL_TIME)
+                if(llList2Integer(g_lTimes, n)==REAL_TIME)
                 {
-                    while(llList2Integer(times, n+1)<=currenttime&&llList2Integer(times, n)==REAL_TIME)
+                    while(llList2Integer(g_lTimes, n+1)<=g_iCurrentTime&&llList2Integer(g_lTimes, n)==REAL_TIME)
                     {
-                        times=llDeleteSubList(times, n, n+1);
-                        timeslength=llGetListLength(times);
+                        g_lTimes=llDeleteSubList(g_lTimes, n, n+1);
+                        g_iTimesLength=llGetListLength(g_lTimes);
                     }
-                    if(llList2Integer(times, n)==REAL_TIME&&llList2Integer(times, n+1)<firstrealtime)
+                    if(llList2Integer(g_lTimes, n)==REAL_TIME&&llList2Integer(g_lTimes, n+1)<g_iFirstRealTime)
                     {
-                        firstrealtime=llList2Integer(times, n+1);
+                        g_iFirstRealTime=llList2Integer(g_lTimes, n+1);
                     }
                 }
             }
         }
-        if(onrunning == 1 && ontimeupat<=ontime)
+        if(g_iOnRunning == 1 && g_iOnTimeUpAt<=g_iOnTime)
         {
+            g_iOnRunning = 0;
             TimerWhentOff();
         }
-        if(realrunning == 1 && realtimeupat<=currenttime)
+        if(g_iRealRunning == 1 && g_iRealTimeUpAt<=g_iCurrentTime)
         {
+            g_iRealRunning = 0;
             TimerWhentOff();
         }
-        lasttime=currenttime;
+        g_iLastTime=g_iCurrentTime;
     }
 
 }
