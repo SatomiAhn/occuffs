@@ -70,6 +70,8 @@ integer     g_nRLVArms = FALSE;
 integer     g_nRLVLegs = FALSE;
 integer     g_nRLVMode = FALSE;
 
+// variable for interaction blocking
+integer     g_iBlockMode    = FALSE;
 
 
 key         g_keyWearer;
@@ -183,7 +185,9 @@ RLVRestrictions(integer ShowMessages)
                 llMessageLinked(LINK_THIS, RLV_CMD, "edit=n", NULL_KEY);
                 llMessageLinked(LINK_THIS, RLV_CMD, "rez=n", NULL_KEY);
                 llMessageLinked(LINK_THIS, RLV_CMD, "showinv=n", NULL_KEY);
-                llMessageLinked(LINK_THIS, RLV_CMD, "fartouch=n", NULL_KEY);
+                if (!g_iBlockMode)llMessageLinked(LINK_THIS, RLV_CMD, "fartouch=n", NULL_KEY);
+                else llMessageLinked(LINK_THIS, RLV_CMD, "touchall=n", NULL_KEY);
+                
             }
 
         }
@@ -198,8 +202,8 @@ RLVRestrictions(integer ShowMessages)
                 llMessageLinked(LINK_THIS, RLV_CMD, "edit=y", NULL_KEY);
                 llMessageLinked(LINK_THIS, RLV_CMD, "rez=y", NULL_KEY);
                 llMessageLinked(LINK_THIS, RLV_CMD, "showinv=y", NULL_KEY);
-                llMessageLinked(LINK_THIS, RLV_CMD, "fartouch=y", NULL_KEY);
-
+                if (!g_iBlockMode)llMessageLinked(LINK_THIS, RLV_CMD, "fartouch=y", NULL_KEY);
+                else llMessageLinked(LINK_THIS, RLV_CMD, "touchall=y", NULL_KEY);
             }
         }
         if(g_nLegAnimRunning)
@@ -242,6 +246,8 @@ RLVRestrictions(integer ShowMessages)
             llMessageLinked(LINK_THIS, RLV_CMD, "rez=y", NULL_KEY);
             llMessageLinked(LINK_THIS, RLV_CMD, "showinv=y", NULL_KEY);
             llMessageLinked(LINK_THIS, RLV_CMD, "fartouch=y", NULL_KEY);
+            if (!g_iBlockMode)llMessageLinked(LINK_THIS, RLV_CMD, "fartouch=y", NULL_KEY);
+            else llMessageLinked(LINK_THIS, RLV_CMD, "touchall=y", NULL_KEY);
             g_nRLVArms=FALSE;
         }
 
@@ -312,6 +318,16 @@ default
             {
                 g_nRLVMode = FALSE;
                 RLVRestrictions(TRUE);
+            }
+            else if (szMsg == "blockmode=on")
+            {
+                g_iBlockMode    = TRUE;
+                RLVRestrictions(FALSE); 
+            }
+            else if (szMsg == "blockmode=off")
+            {
+                g_iBlockMode    = FALSE;
+                RLVRestrictions(FALSE);
             }
         }
         // check for Cuff Anim commands to interact with AOs

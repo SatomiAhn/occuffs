@@ -57,6 +57,18 @@ integer    CMD_MODULE        = 2;        // cmd for this module
 
 integer    g_nCmdType        = CMD_UNKNOWN;
 
+//MESSAGE MAP
+integer COMMAND_NOAUTH = 0;
+integer COMMAND_OWNER = 500;
+integer COMMAND_SECOWNER = 501;
+integer COMMAND_GROUP = 502;
+integer COMMAND_WEARER = 503;
+integer COMMAND_EVERYONE = 504;
+integer COMMAND_COLLAR = 499;
+//integer CHAT = 505; //deprecated.  Too laggy to make every single script parse a link message any time anyone says anything
+integer COMMAND_OBJECT = 506;
+integer COMMAND_RLV_RELAY = 507;
+integer COMMAND_SAFEWORD = 510;  // new for safeword
 //
 // external command syntax
 // sender prefix|receiver prefix|command1=value1~command2=value2|UUID to send under
@@ -66,6 +78,8 @@ string    g_szReceiver    = "";
 string    g_szSender        = "";
 
 integer g_nLockGuardChannel = -9119;
+
+string g_sPrefix = "*" ;
 
 //===============================================================================
 //= parameters   :  string szMsg        output message
@@ -158,6 +172,8 @@ Init()
     g_nCmdChannel = nGetOwnerChannel(g_nCmdChannelOffset);
     g_nCuffChannel = g_nCmdChannel+1;
     
+    g_sPrefix = AutoPrefix() + "c " ;
+
     llListenRemove(g_nStdHandle);
     llListenRemove(g_nCmdHandle);
     llListenRemove(g_nCuffHandle);
@@ -171,6 +187,19 @@ Init()
     akDebug(llGetScriptName ()+" ready - Memory : " + (string)llGetFreeMemory(), "", FALSE, -1);
     //llOwnerSay(llGetScriptName ()+" ready - Memory : " + (string)llGetFreeMemory());
 
+}
+
+// Return the string to be used for a prefix on the cuffs:
+string AutoPrefix()
+{
+    list sName = llParseString2List(llKey2Name(g_keyWearer), [" "], []);
+    return llToLower(llGetSubString(llList2String(sName, 0), 0, 0)) + llToLower(llGetSubString(llList2String(sName, 1), 0, 0));
+}
+
+// Return true or false - true if 'needle' is found in 'haystack'
+integer StartsWith(string sHayStack, string sNeedle) // http://wiki.secondlife.com/wiki/llSubStringIndex
+{
+    return llDeleteSubString(sHayStack, llStringLength(sNeedle), -1) == sNeedle;
 }
 
 //===============================================================================
@@ -283,12 +312,28 @@ default
         }
         else if ( nChannel == g_nStdChannel )
         {
-            // test for chat message
-            //llMessageLinked(LINK_THIS, LM_CUFF_CMD, szMsg, llGetOwnerKey(keyID));
-            if ( g_nCmdType == CMD_CHAT )
+            // test for chat message for owner, secowner, or blacklist, only from
+            // the wearer of the cuffs (at least for now).
+            key keySource = llGetOwnerKey( keyID ) ;
+            if ( keySource == g_keyWearer && StartsWith(llToLower(szMsg), g_sPrefix )  )
             {
-                llMessageLinked(LINK_THIS, LM_CUFF_CMD, szMsg, llGetOwnerKey(keyID));
+                szMsg = llGetSubString( szMsg, llStringLength(g_sPrefix), -1 ) ;
+                integer IsCmd = FALSE ;
+                if ( StartsWith(llToLower(szMsg), "owner " ) ) IsCmd = TRUE ;
+                if ( StartsWith(llToLower(szMsg), "secowner " ) ) IsCmd = TRUE ;
+                if ( StartsWith(llToLower(szMsg), "blacklist " ) ) IsCmd = TRUE ;
+                if ( IsCmd )
+                {
+                    llMessageLinked( LINK_THIS, COMMAND_NOAUTH, szMsg, keySource ) ;
+                }  
+                
             }
+            
+            //llMessageLinked(LINK_THIS, LM_CUFF_CMD, szMsg, llGetOwnerKey(keyID));
+            //if ( g_nCmdType == CMD_CHAT )
+            //{
+            //    llMessageLinked(LINK_THIS, LM_CUFF_CMD, szMsg, llGetOwnerKey(keyID));
+            //}
         }
         else if ( nChannel == g_nLockGuardChannel )
         {

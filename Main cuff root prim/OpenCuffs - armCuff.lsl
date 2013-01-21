@@ -29,6 +29,12 @@ string      g_szRLVModeDisabled = "( ) RLV Restricions";
 string      g_szRLVModeToken = "rest";
 integer     g_nRLVModeAuth = FALSE;
 
+// block interactions when arms are cuffed
+string      g_szBlockModeEnabled = "(*) Block Interactions";
+string      g_szBlockModeDisabled = "( ) Block Interactions";
+string      g_szBlockModeToken = "block";
+integer     g_nBlockModeAuth = FALSE;
+
 integer     g_nRemenu = FALSE;
 
 key g_keyDialogID;
@@ -228,6 +234,15 @@ DoMenu(key id)
         mybuttons += [g_szRLVModeDisabled];
     }
 
+    if (g_nBlockModeAuth>0)
+    {
+        mybuttons += [g_szBlockModeEnabled];
+    }
+    else
+    {
+        mybuttons += [g_szBlockModeDisabled];
+    }
+
     g_keyDialogID=Dialog(id, prompt, mybuttons, [UPMENU], 0);
 }
 
@@ -257,6 +272,7 @@ init()
 
     g_szStayModeToken1=szGetDBPrefix() + g_szStayModeToken1;
     g_szRLVModeToken=szGetDBPrefix() + g_szRLVModeToken;
+    g_szBlockModeToken=szGetDBPrefix() + g_szBlockModeToken;
 
 
     llSleep(1.0);
@@ -340,7 +356,7 @@ default
                     }
                 }
                 else if (szMsg=="rlvmode=off")
-                    // disable the stay mode
+                    // disable the RLV mode
                 {
                     if (g_nRLVModeAuth>=nNum)
                     {
@@ -360,7 +376,7 @@ default
                     }
                 }
                 else if (szMsg=="rlvmode=on")
-                    // enable the stay mode
+                    // enable the RLV mode
                 {
                     g_nRLVModeAuth=nNum;
                     llMessageLinked(LINK_THIS,HTTPDB_SAVE,g_szRLVModeToken+"="+(string)nNum,"");
@@ -372,9 +388,39 @@ default
                         DoMenu(keyID);
                     }
                 }
-
-
-
+                else if (szMsg=="blockmode=off")
+                    // disable the block mode
+                {
+                    if (g_nBlockModeAuth>=nNum)
+                    {
+                        g_nBlockModeAuth=FALSE;
+                        llMessageLinked(LINK_THIS,HTTPDB_DELETE,g_szBlockModeToken,"");
+                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "blockmode=off", NULL_KEY);
+                        Notify(keyID,llKey2Name(g_keyWearer)+ "'s interactions with environment will now NOT be blocked when arms are cuffed.", TRUE);
+                    }
+                    else
+                    {
+                        Notify(keyID,"You are not allowed to change the block mode.",FALSE);
+                    }
+                    if (g_nRemenu)
+                    {
+                        g_nRemenu=FALSE;
+                        DoMenu(keyID);
+                    }
+                }
+                else if (szMsg=="blockmode=on")
+                    // enable the block mode
+                {
+                    g_nBlockModeAuth=nNum;
+                    llMessageLinked(LINK_THIS,HTTPDB_SAVE,g_szBlockModeToken+"="+(string)nNum,"");
+                    llMessageLinked(LINK_THIS, LM_CUFF_CMD, "blockmode=on", NULL_KEY);
+                    Notify(keyID,llKey2Name(g_keyWearer)+ "'s interactions with environment will now be blocked when arms are cuffed.", TRUE);
+                    if (g_nRemenu)
+                    {
+                        g_nRemenu=FALSE;
+                        DoMenu(keyID);
+                    }
+                }
             }
             else if (nNum == MENUNAME_REQUEST)
             {
@@ -446,6 +492,21 @@ default
                     }
 
                 }
+                else if (startswith(szMsg,g_szBlockModeToken))
+                {
+                    integer n=(integer)llGetSubString(szMsg,llStringLength(g_szBlockModeToken)+1,-1);
+                    if (n>0)
+                    {
+                        g_nBlockModeAuth=n;
+                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "blockmode=on", NULL_KEY);
+                    }
+                    else
+                    {
+                        g_nBlockModeAuth=FALSE;
+                        llMessageLinked(LINK_THIS, LM_CUFF_CMD, "blockmode=off", NULL_KEY);
+                    }
+
+                }
             }
             else if (nNum == DIALOG_RESPONSE)
             {
@@ -498,18 +559,32 @@ default
                         llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "staymode=slow", AV);
                     }
                     else if (message==g_szRLVModeEnabled)
-                        // disable the stay mode
+                        // disable the RLV mode
                     {
                         g_nRemenu = TRUE;
 
                         llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "rlvmode=off", AV);
                     }
                     else if (message==g_szRLVModeDisabled)
-                        // enable the stay mode
+                        // enable the RLV mode
                     {
                         g_nRemenu = TRUE;
 
                         llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "rlvmode=on", AV);
+                    }
+                    else if (message==g_szBlockModeEnabled)
+                        // disable the block mode
+                    {
+                        g_nRemenu = TRUE;
+
+                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "blockmode=off", AV);
+                    }
+                    else if (message==g_szBlockModeDisabled)
+                        // enable the block mode
+                    {
+                        g_nRemenu = TRUE;
+
+                        llMessageLinked(LINK_THIS, COMMAND_NOAUTH, "blockmode=on", AV);
                     }
                 }
             }

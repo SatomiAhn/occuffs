@@ -4,7 +4,7 @@
 //on menu request, give dialog, with alphabetized list of submenus
 //on listen, send submenu link message
 
-list menunames = ["Main", "Help/Debug"]; //, "AddOns"];
+list menunames = ["Main", "Help/Debug", "AddOns"];
 list menulists;//exists in parallel to menunames, each entry containing a pipe-delimited string with the items for the corresponding menu
 list menuprompts = [
 "Pick an option.\n",
